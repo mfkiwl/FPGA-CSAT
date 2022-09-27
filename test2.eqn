@@ -1,0 +1,6 @@
+# Test Backtracking: a must be 0, but that is not assigned by initial propagation
+INORDER = a b c;
+OUTORDER = z;
+n0 = a ^ b ^ c;
+n1 = b ^ c;
+z = n0 * n1;
