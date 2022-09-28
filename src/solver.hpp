@@ -32,15 +32,22 @@ class Solver {
    public:
     Solver(string eqn_file_path, string output_to_satify);
     void solve();
-    void verify();
+    void writeTestbench();
+    void writeTCL();
 
     string output_to_satify;
+    string module_name;
     Graph graph;
+
     unordered_map<string, bool> satisfying_assignment;
     bool isSat;
 };
 
 Solver::Solver(string eqn_file_path, string output_to_satify) : output_to_satify(output_to_satify) {
+    std::string file_name = eqn_file_path.substr(eqn_file_path.find_last_of("/") + 1);
+    std::string::size_type const p(file_name.find_last_of('.'));
+    module_name = file_name.substr(0, p);
+    cout << "module_name = " << module_name << endl;
     parseEQN(eqn_file_path, graph);
 }
 
@@ -230,4 +237,67 @@ void Solver::solve() {
             propagation_queue.push_back(branching_assignment);
         }
     }
+}
+
+std::string stringJoin(const std::vector<std::string>& lst, const std::string& delim) {
+    std::string ret;
+    for (const auto& s : lst) {
+        if (!ret.empty())
+            ret += delim;
+        ret += s;
+    }
+    return ret;
+}
+
+void Solver::writeTestbench() {
+    string test_bench_path = "tb.v";
+    ofstream tb_out(test_bench_path);
+    if (!tb_out.good()) {
+        cout << "Opening " << test_bench_path << " failed" << endl;
+        throw invalid_argument("Opening .v file failed");
+    }
+
+    tb_out << "// Testbench tb.v written by CSAT_solver \n\n";
+    tb_out << "module tb ();\n";
+    tb_out << "  reg " << stringJoin(graph.primary_inputs, ", ") << ";\n";
+    tb_out << "  wire " << stringJoin(graph.primary_outputs, ", ") << ";\n";
+    tb_out << "  " << module_name << " UUT(" << stringJoin(graph.primary_inputs, ", ") << ", " << stringJoin(graph.primary_outputs, ", ") << ");\n";
+    tb_out << "  integer error_code;\n";
+    tb_out << "  initial begin\n";
+    for (const auto& e : satisfying_assignment) {
+        tb_out << "        " << e.first << " = " << e.second << ";\n";
+    }
+    tb_out << "        #1;\n";
+    tb_out << "        if (" << output_to_satify << " == 1) begin\n";
+    tb_out << "            $display(\"SUCCESS\");\n";
+    tb_out << "            error_code = 0;\n";
+    tb_out << "        end\n";
+    tb_out << "        else begin\n";
+    tb_out << "            $display(\"FAIL\");\n";
+    tb_out << "            error_code = 1;\n";
+    tb_out << "        end\n";
+    tb_out << "        $finish;\n";
+    tb_out << "    end\n";
+    tb_out << "endmodule\n";
+}
+
+/* Needs to be custom because ABC always writes the verilog module using the orignal name */
+void Solver::writeTCL() {
+    string tcl_path = "verify_tb.tcl";
+    ofstream tcl_out(tcl_path);
+    if (!tcl_out.good()) {
+        cout << "Opening " << tcl_path << " failed" << endl;
+        throw invalid_argument("Opening .tcl file failed");
+    }
+
+    tcl_out << "# Create project and launch simulation\n";
+    tcl_out << "create_project tb_simulation_project ./tb_simulation_project -force\n";
+    tcl_out << "add_files -norecurse {" << module_name << ".v tb.v}\n";
+    tcl_out << "update_compile_order -fileset sources_1\n";
+    tcl_out << "set_property top tb [get_filesets sim_1]\n";
+    tcl_out << "launch_simulation\n\n";
+    tcl_out << "# Grab the \"error_code\" signal from the simulation upon completion\n";
+    tcl_out << "set simError [get_value -radix unsigned /tb/error_code]\n\n";
+    tcl_out << "# Exit TCL script with the error code\n";
+    tcl_out << "exit $simError\n";
 }

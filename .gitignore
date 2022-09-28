@@ -1,2 +1,4 @@
 .vscode
 *.code-workspace
+tb_simulation_project
+verify_tb.tcl

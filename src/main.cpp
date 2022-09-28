@@ -44,4 +44,6 @@ int main() {
     for (auto& pi : S.graph.primary_inputs) {
         cout << pi << " " << S.satisfying_assignment[pi] << endl;
     }
+    S.writeTestbench();
+    S.writeTCL();
 }
