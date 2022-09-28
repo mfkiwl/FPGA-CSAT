@@ -19,7 +19,7 @@ vector<string> findWordsInLine(const string& line) {
     vector<string> words;
     string current_word;
     for (const auto& c : line) {
-        if (isalnum(c) | c == '_') {
+        if (isalpha(c) | c == '_' | (isdigit(c) & !current_word.empty())) {
             current_word.push_back(c);
         } else if (!current_word.empty()) {
             words.push_back(current_word);
