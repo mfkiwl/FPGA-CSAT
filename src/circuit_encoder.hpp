@@ -104,7 +104,9 @@ struct GateNode {
 
 struct Graph {
     vector<GateNode> nodes;
-    vector<uint32_t> primary_inputs;
+    vector<string> primary_inputs;
+    vector<string> primary_outputs;
+    unordered_map<string, uint32_t> name_map;
 };
 
 void parseEQN(string eqn_file_path, Graph& graph) {
@@ -117,8 +119,8 @@ void parseEQN(string eqn_file_path, Graph& graph) {
     string line;
     vector<string> primary_inputs;
     vector<string> primary_outputs;
+    unordered_map<string, uint32_t> name_map;
     unordered_map<string, Signal> signals;
-    unordered_map<string, uint32_t> remapping;
     uint32_t priority = 0;
 
     auto carefulSignalInsert = [](unordered_map<string, Signal>& signals, const pair<string, Signal> s) {
@@ -143,7 +145,7 @@ void parseEQN(string eqn_file_path, Graph& graph) {
             for (const string& name : primary_inputs) {
                 Signal s = {name, true};
                 carefulSignalInsert(signals, {name, s});
-                remapping[name] = priority;
+                name_map[name] = priority;
                 priority++;
             }
         } else if (line.starts_with("OUTORDER")) {
@@ -156,19 +158,19 @@ void parseEQN(string eqn_file_path, Graph& graph) {
             parseGateLine(line, name, formula, inputs);
             Signal s = {name, formula, inputs};
             carefulSignalInsert(signals, {name, s});
-            remapping[name] = priority;
+            name_map[name] = priority;
             priority++;
         }
     }
 
     // Convert signals to gate nodes
     graph.nodes.resize(signals.size());
-    graph.primary_inputs.clear();
-    for (auto& pi_name : primary_inputs) {
-        graph.primary_inputs.push_back(remapping.at(pi_name));
-    }
+    graph.primary_inputs = primary_inputs;
+    graph.primary_outputs = primary_outputs;
+    graph.name_map = name_map;
+
     for (const auto& [name, signal] : signals) {
-        uint32_t gate = remapping.at(name);
+        uint32_t gate = name_map.at(name);
 
         graph.nodes[gate].is_PI = signal.is_PI;
 
@@ -188,7 +190,7 @@ void parseEQN(string eqn_file_path, Graph& graph) {
         // Create backwards and forwards edges from signal inputs
         for (uint8_t offset = 0; offset < signal.inputs.size(); offset++) {
             OutPin pin = {gate, offset};
-            uint32_t predecessor = remapping.at(signal.inputs[offset]);
+            uint32_t predecessor = name_map.at(signal.inputs[offset]);
 
             graph.nodes[predecessor].outputs.push_back(pin);
             graph.nodes[gate].inputs[offset] = static_cast<InPin>(predecessor);
