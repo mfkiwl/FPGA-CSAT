@@ -248,6 +248,15 @@ std::string stringJoin(const std::vector<std::string>& lst, const std::string& d
     }
     return ret;
 }
+std::string verilogSelfMapping(const std::vector<std::string>& lst) {
+    std::string ret;
+    for (const auto& s : lst) {
+        if (!ret.empty())
+            ret += ", ";
+        ret += "." + s + "(" + s + ")";
+    }
+    return ret;
+}
 
 void Solver::writeTestbench() {
     string test_bench_path = "tb.v";
@@ -261,7 +270,7 @@ void Solver::writeTestbench() {
     tb_out << "module tb ();\n";
     tb_out << "  reg " << stringJoin(graph.primary_inputs, ", ") << ";\n";
     tb_out << "  wire " << stringJoin(graph.primary_outputs, ", ") << ";\n";
-    tb_out << "  " << module_name << " UUT(" << stringJoin(graph.primary_inputs, ", ") << ", " << stringJoin(graph.primary_outputs, ", ") << ");\n";
+    tb_out << "  " << module_name << " UUT(" << verilogSelfMapping(graph.primary_inputs) << ", " << verilogSelfMapping(graph.primary_outputs) << ");\n";
     tb_out << "  integer error_code;\n";
     tb_out << "  initial begin\n";
     for (const auto& e : satisfying_assignment) {
