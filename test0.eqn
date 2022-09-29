@@ -1,6 +1,0 @@
-# Custom .eqn file to test graph transformation
-INORDER = a b c d e f g h i j k l;
-OUTORDER = z;
-n0 = a + !b + !c + d + e + f + !g + h;
-n1 = !e * f * g * h * i * !j * k * l;
-z = n0 ^ n1;

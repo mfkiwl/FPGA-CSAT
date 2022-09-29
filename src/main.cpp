@@ -2,13 +2,20 @@
 #include "implication.hpp"
 #include "solver.hpp"
 
-int main() {
-    /* Circuit Encoder Tests
+int main(int argc, char* argv[]) {
+    /* Test Fixture Setup
      */
     string test_line = "new_n582_ = !IR_REG_2__SCAN_IN * !IR_REG_0__SCAN_IN * !IR_REG_1__SCAN_IN;";
-    string file_path = "/home/erin/Data/Saved/Research/CSAT_solver/test0.eqn";
-    string output_to_satify = "z";
-    // parseGateLine(test_line);
+    string file_path = "/home/erin/Data/Saved/Research/CSAT_solver/c2670_n3671_reduced.eqn";
+    string output_to_satify = "n3671";
+
+    if (argc == 3) {
+        file_path = string(argv[1]);
+        output_to_satify = string(argv[2]);
+    }
+
+    /* Circuit Encoder Tests
+     */
     Graph graph;
     parseEQN(file_path, graph);
     for (int i = 0; i < graph.nodes.size(); i++) {
