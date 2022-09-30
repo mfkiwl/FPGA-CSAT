@@ -28,6 +28,43 @@ struct Propagation {
     PinValue value;
 };
 
+void debug_PrintCircuit(const vector<Gate>& circuit, const Graph& graph) {
+    for (const auto& e : graph.name_map) {
+        const auto gate = e.second;
+        cout << e.first << ": ";
+        if (graph.nodes[gate].is_PI) {
+            cout << "PI ";
+        } else {
+            "inputs = {";
+            for (size_t i = 0; i < LUT_SIZE; i++) {
+                if (graph.nodes[gate].inputs[i] == NO_CONNECT) {
+                    break;
+                }
+                cout << graph.gate_map.at(graph.nodes[gate].inputs[i]) << "(" << circuit[gate].input_pins[i] << ") ";
+            }
+            cout << "} ";
+        }
+        cout << "output = {";
+        cout << circuit[gate].output_pin;
+        cout << "}" << endl;
+    }
+}
+
+bool debug_CircuitIsCoherent(const vector<Gate>& circuit, const Graph& graph) {
+    for (size_t gate = 0; gate < graph.nodes.size(); gate++) {
+        for (size_t i = 0; i < LUT_SIZE; i++) {
+            if (graph.nodes[gate].inputs[i] == NO_CONNECT) {
+                break;
+            }
+            if (circuit[gate].input_pins[i] != circuit[graph.nodes[gate].inputs[i]].output_pin) {
+                cout << "Coherency check failed!" << endl;
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 class Solver {
    public:
     Solver(string eqn_file_path, string output_to_satify);
@@ -165,6 +202,7 @@ void Solver::solve() {
         Next_Propagation:
             p++;
         }
+        assert(debug_CircuitIsCoherent(circuit, graph));
         propagation_queue.clear();
 
         if (conflict_occurred) {
@@ -203,6 +241,7 @@ void Solver::solve() {
         } else if (pi_assigned_count == num_pis) {
             /* SAT */
             cout << "SAT" << endl;
+            debug_PrintCircuit(circuit, graph);
             isSat = true;
             for (auto& pi : graph.primary_inputs) {
                 size_t gate_id = graph.name_map.at(pi);

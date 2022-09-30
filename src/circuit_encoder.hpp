@@ -77,7 +77,7 @@ struct OutPin {
     uint8_t offset;
 };
 
-enum struct InPin : uint32_t;
+typedef uint32_t InPin;
 const InPin NO_CONNECT = InPin(-1);
 
 /*! Struct containing all the necesary information to form the circuit graph
@@ -107,6 +107,7 @@ struct Graph {
     vector<string> primary_inputs;
     vector<string> primary_outputs;
     unordered_map<string, uint32_t> name_map;
+    unordered_map<uint32_t, string> gate_map;
 };
 
 void parseEQN(string eqn_file_path, Graph& graph) {
@@ -168,6 +169,9 @@ void parseEQN(string eqn_file_path, Graph& graph) {
     graph.primary_inputs = primary_inputs;
     graph.primary_outputs = primary_outputs;
     graph.name_map = name_map;
+    for (const auto &p: name_map) {
+		graph.gate_map.insert(std::make_pair(p.second, p.first));
+	}
 
     for (const auto& [name, signal] : signals) {
         uint32_t gate = name_map.at(name);
