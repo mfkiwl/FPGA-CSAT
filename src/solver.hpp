@@ -77,6 +77,7 @@ class Solver {
     Graph graph;
 
     unordered_map<string, bool> satisfying_assignment;
+    unsigned int conflict_count;
     bool isSat;
 };
 
@@ -105,6 +106,7 @@ void Solver::solve() {
     vector<uint32_t> trail_lim;
     vector<uint32_t> branch_lim = {0};  // Keeps track of where the next branching gate search should start
     uint32_t pi_assigned_count = 0;
+    conflict_count = 0;
 
     vector<PinAssignment> trail;
     vector<Propagation> propagation_queue;
@@ -202,10 +204,11 @@ void Solver::solve() {
         Next_Propagation:
             p++;
         }
-        assert(debug_CircuitIsCoherent(circuit, graph));
+        assert(conflict_occurred || debug_CircuitIsCoherent(circuit, graph));
         propagation_queue.clear();
 
         if (conflict_occurred) {
+            conflict_count++;
             if (decision_level == 0) {
                 /* UNSAT */
                 cout << "UNSAT" << endl;
