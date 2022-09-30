@@ -128,7 +128,7 @@ void Solver::solve() {
 
                 // Imply Direction::outwards Self PinAssignment
                 PinValue implied_val = calculateOutputImplication(circuit[g]);
-                if (implied_val != PinValue::unknown && implied_val != circuit[g].output_pin) {
+                if (implied_val != PinValue::unknown) {
                     // Check for conlict + Assign for implied_val
                     if (conflictingAssign(circuit[g].output_pin, implied_val)) {
                         conflict_occurred = true;
@@ -139,7 +139,7 @@ void Solver::solve() {
 
                     // Direction::inwards coherency Propagations
                     for (size_t i = 0; i < nodes[g].outputs.size(); i++) {
-                        propagation_queue.push_back(Propagation(static_cast<Antecedent>(g), nodes[g].outputs[i], new_val));
+                        propagation_queue.push_back(Propagation(static_cast<Antecedent>(g), nodes[g].outputs[i], implied_val));
                     }
                 }
             }
