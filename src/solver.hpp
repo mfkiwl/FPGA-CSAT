@@ -129,8 +129,11 @@ void Solver::solve() {
             const uint32_t from_gate = propagation_queue[p].from;
             const uint32_t g = propagation_queue[p].to_gate;
             const PinValue new_val = prop.value;
+
+            Gate new_gate_state = circuit[g];
+
+            // CONFLICT CHECK and ASSIGN
             if (prop.direction == outwards) {
-                // Check for conlict + Assign
                 if (conflictingAssign(circuit[g].output_pin, new_val)) {
                     conflict_occurred = true;
                     break;
@@ -138,69 +141,62 @@ void Solver::solve() {
                 if (circuit[g].output_pin == new_val) {
                     goto Next_Propagation;
                 }
-                circuit[g].output_pin = new_val;
-                trail.push_back(PinAssignment(g, new_val));
+                new_gate_state.output_pin = new_val;
 
                 // Maintain primary inputs assigned count
                 if (nodes[g].is_PI) {
                     pi_assigned_count++;
                 }
-
-                // Direction::inwards coherency splinter Propagations
-                for (size_t i = 0; i < nodes[g].outputs.size(); i++) {
-                    if (nodes[g].outputs[i].gate == from_gate) {
-                        continue;  // skip originating gate
-                    }
-                    propagation_queue.push_back(Propagation(static_cast<Antecedent>(g), nodes[g].outputs[i], new_val));
-                }
-
-            } else {
+            } else if (prop.direction == inwards) {
                 const uint8_t offset = prop.to_offset;
-
-                // Check for conlict + Assign
                 if (conflictingAssign(circuit[g].input_pins[offset], new_val)) {
                     conflict_occurred = true;
                     break;
                 }
-                circuit[g].input_pins[offset] = new_val;
-                trail.push_back(PinAssignment({g, offset}, new_val));
-
-                // Imply Direction::outwards Self PinAssignment
-                PinValue implied_val = calculateOutputImplication(circuit[g]);
-                if (implied_val != PinValue::unknown) {
-                    // Check for conlict + Assign for implied_val
-                    if (conflictingAssign(circuit[g].output_pin, implied_val)) {
-                        conflict_occurred = true;
-                        break;
-                    }
-                    circuit[g].output_pin = implied_val;
-                    trail.push_back(PinAssignment(g, implied_val));
-
-                    // Direction::inwards coherency Propagations
-                    for (size_t i = 0; i < nodes[g].outputs.size(); i++) {
-                        propagation_queue.push_back(Propagation(static_cast<Antecedent>(g), nodes[g].outputs[i], implied_val));
-                    }
+                if (circuit[g].input_pins[offset] == new_val) {
+                    goto Next_Propagation;
                 }
+                new_gate_state.input_pins[offset] = new_val;
             }
 
-            // Imply Direction::outwards PinAssignments of input pins (occurs for both PinAssignment directions)
+            // IMPLY (this can happen in parallel after ASSIGN as pin implications are independent)
+            // Conflicts will never result from implication (see proof), so it is only needed on unknown pins
+            if (new_gate_state.output_pin == PinValue::unknown) {
+                new_gate_state.output_pin = calculateOutputImplication(new_gate_state);
+            }
             for (uint8_t i = 0; i < LUT_SIZE; i++) {
                 if (nodes[g].inputs[i] == NO_CONNECT) {
                     continue;
                 }
-                PinValue implied_val = calculateInputImplication(circuit[g], i);
-                if (implied_val != PinValue::unknown && implied_val != circuit[g].input_pins[i]) {
-                    // Check for conlict + Assign
-                    if (conflictingAssign(circuit[g].input_pins[i], implied_val)) {
-                        conflict_occurred = true;
-                        break;
-                    }
-                    circuit[g].input_pins[i] = implied_val;
-                    trail.push_back(PinAssignment({g, i}, implied_val));
-
-                    propagation_queue.push_back(Propagation(g, static_cast<uint32_t>(nodes[g].inputs[i]), implied_val));
+                if (new_gate_state.input_pins[i] == PinValue::unknown) {
+                    new_gate_state.input_pins[i] = calculateInputImplication(new_gate_state, i);
                 }
             }
+
+            // RECORD trail history and QUEUE propagations
+            if (circuit[g].output_pin != new_gate_state.output_pin) {
+                trail.push_back(PinAssignment(g, new_gate_state.output_pin));
+                for (size_t i = 0; i < nodes[g].outputs.size(); i++) {
+                    // preemptively skip originating gate if it was the antecedent
+                    if (prop.direction == outwards && nodes[g].outputs[i].gate == from_gate) {
+                        continue;
+                    }
+                    propagation_queue.push_back(Propagation(static_cast<Antecedent>(g), nodes[g].outputs[i], new_gate_state.output_pin));
+                }
+            }
+            for (uint8_t i = 0; i < LUT_SIZE; i++) {
+                if (nodes[g].inputs[i] == NO_CONNECT) {
+                    continue;
+                }
+                if (circuit[g].input_pins[i] != new_gate_state.input_pins[i]) {
+                    trail.push_back(PinAssignment({g, i}, new_gate_state.input_pins[i]));
+                    propagation_queue.push_back(Propagation(g, static_cast<uint32_t>(nodes[g].inputs[i]), new_gate_state.input_pins[i]));
+                }
+            }
+
+            // "Atomic" update
+            circuit[g] = new_gate_state;
+
         Next_Propagation:
             p++;
         }
