@@ -177,7 +177,7 @@ void Solver::solve() {
             if (circuit[g].output_pin != new_gate_state.output_pin) {
                 trail.push_back(PinAssignment(g, new_gate_state.output_pin));
                 for (size_t i = 0; i < nodes[g].outputs.size(); i++) {
-                    // preemptively skip originating gate if it was the antecedent
+                    // preemptively skip originating gate if it was the antecedent (splinter blast)
                     if (prop.direction == outwards && nodes[g].outputs[i].gate == from_gate) {
                         continue;
                     }
@@ -190,6 +190,10 @@ void Solver::solve() {
                 }
                 if (circuit[g].input_pins[i] != new_gate_state.input_pins[i]) {
                     trail.push_back(PinAssignment({g, i}, new_gate_state.input_pins[i]));
+                    // preemptively skip originating gate if it was the antecedent (rebound) 
+                    if(prop.direction == inwards && prop.to_offset == i) {
+                        continue;
+                    }
                     propagation_queue.push_back(Propagation(g, static_cast<uint32_t>(nodes[g].inputs[i]), new_gate_state.input_pins[i]));
                 }
             }
@@ -232,6 +236,7 @@ void Solver::solve() {
             reconsider.value = (reconsider.value == PinValue::one) ? PinValue::zero : PinValue::one;
             trail.erase(trail.begin() + trail_lim[backtrack_level], trail.end());
             branch_lim.pop_back();
+            trail_lim.pop_back();
             decision_level = backtrack_level;
 
             Propagation branching_assignment(DECISION, reconsider.to_gate, reconsider.value);
