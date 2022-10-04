@@ -300,6 +300,16 @@ std::string verilogSelfMapping(const std::vector<std::string>& lst) {
     }
     return ret;
 }
+string sanitize(const string& s) {
+    return ('\\' + s + ' ');
+}
+vector<string> sanitize(const std::vector<std::string>& lst) {
+    vector<string> ret;
+    for (const auto& s : lst) {
+        ret.push_back(sanitize(s));
+    }
+    return ret;
+}
 
 void Solver::writeTestbench() {
     string test_bench_path = "tb.v";
@@ -309,18 +319,21 @@ void Solver::writeTestbench() {
         throw invalid_argument("Opening .v file failed");
     }
 
+    vector<string> pis = sanitize(graph.primary_inputs);
+    vector<string> pos = sanitize(graph.primary_outputs);
+
     tb_out << "// Testbench tb.v written by CSAT_solver \n\n";
     tb_out << "module tb ();\n";
-    tb_out << "  reg " << stringJoin(graph.primary_inputs, ", ") << ";\n";
-    tb_out << "  wire " << stringJoin(graph.primary_outputs, ", ") << ";\n";
-    tb_out << "  " << module_name << " UUT(" << verilogSelfMapping(graph.primary_inputs) << ", " << verilogSelfMapping(graph.primary_outputs) << ");\n";
+    tb_out << "  reg " << stringJoin(pis, ", ") << ";\n";
+    tb_out << "  wire " << stringJoin(pos, ", ") << ";\n";
+    tb_out << "  " << module_name << " UUT(" << verilogSelfMapping(pis) << ", " << verilogSelfMapping(pos) << ");\n";
     tb_out << "  integer error_code;\n";
     tb_out << "  initial begin\n";
     for (const auto& e : satisfying_assignment) {
-        tb_out << "        " << e.first << " = " << e.second << ";\n";
+        tb_out << "        " << sanitize(e.first) << " = " << e.second << ";\n";
     }
     tb_out << "        #1;\n";
-    tb_out << "        if (" << output_to_satify << " == 1) begin\n";
+    tb_out << "        if (" << sanitize(output_to_satify) << " == 1) begin\n";
     tb_out << "            $display(\"SUCCESS\");\n";
     tb_out << "            error_code = 0;\n";
     tb_out << "        end\n";
