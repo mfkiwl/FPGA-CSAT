@@ -5,17 +5,18 @@
 int main(int argc, char* argv[]) {
     /* Test Fixture Setup
      */
-    string test_line = "new_n582_ = !IR_REG_2__SCAN_IN * !IR_REG_0__SCAN_IN * !IR_REG_1__SCAN_IN;";
-    string file_path = "/home/erin/Data/Saved/Research/CSAT_solver/c2670_n3671_reduced.eqn";
-    string output_to_satify = "n3671";
-
+    string file_path, output_to_satify;
     if (argc == 3) {
         file_path = string(argv[1]);
         output_to_satify = string(argv[2]);
+    } else {
+        cout << argv[0] << " <.eqn file path> <primary output to satisfy>" << endl;
+        exit(EXIT_FAILURE);
     }
 
     /* Circuit Encoder Tests
      */
+    findWordsInLine(" a[0] a[1] a[2] a[3] a[4] a[5] a[6] a[7] a[8] a[9] a[10] a[11] ");
     Graph graph;
     parseEQN(file_path, graph);
     for (int i = 0; i < graph.nodes.size(); i++) {
@@ -51,6 +52,7 @@ int main(int argc, char* argv[]) {
     for (auto& pi : S.graph.primary_inputs) {
         cout << pi << " " << S.satisfying_assignment[pi] << endl;
     }
+    cout << S.conflict_count << " conflicts occurred." << endl;
     S.writeTestbench();
     S.writeTCL();
 }
