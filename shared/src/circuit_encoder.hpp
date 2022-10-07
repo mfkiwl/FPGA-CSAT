@@ -15,6 +15,15 @@
 
 using namespace std;
 
+bool stringStartsWith(const string_view& str, const string_view& prefix) {
+    return prefix.size() <= str.size() && str.rfind(prefix, 0) == 0;
+}
+
+bool stringEndsWith(const string_view& str, const string_view& suffix) {
+    size_t pos = str.size() - suffix.size();
+    return suffix.size() <= str.size() && str.find(suffix, pos) == pos;
+}
+
 vector<string> findWordsInLine(const string& line) {
     vector<string> words;
     string current_word;
@@ -44,7 +53,7 @@ void parseSignals(const string& initial_line, ifstream& infile, vector<string>& 
     while (true) {
         vector<string> new_signals = findWordsInLine(line);
         signals.insert(signals.end(), new_signals.begin(), new_signals.end());
-        if (line.ends_with(';')) {
+        if (stringEndsWith(line, ";")) {
             break;
         }
         std::getline(infile, line);
@@ -138,9 +147,9 @@ void parseEQN(string eqn_file_path, Graph& graph) {
 
     // Parse EQN file into Signals
     while (std::getline(infile, line)) {
-        if (line.starts_with('#') || line.empty()) {
+        if (stringStartsWith(line, "#") || line.empty()) {
             continue;
-        } else if (line.starts_with("INORDER")) {
+        } else if (stringStartsWith(line, "INORDER")) {
             parseSignals(line, infile, primary_inputs);
             cout << primary_inputs.size() << " primary inputs read." << endl;
             for (const string& name : primary_inputs) {
@@ -149,7 +158,7 @@ void parseEQN(string eqn_file_path, Graph& graph) {
                 name_map[name] = priority;
                 priority++;
             }
-        } else if (line.starts_with("OUTORDER")) {
+        } else if (stringStartsWith(line, "OUTORDER")) {
             // Signal creation is deferred until the definition is encountered
             parseSignals(line, infile, primary_outputs);
             cout << primary_outputs.size() << " primary outputs read." << endl;
@@ -169,9 +178,9 @@ void parseEQN(string eqn_file_path, Graph& graph) {
     graph.primary_inputs = primary_inputs;
     graph.primary_outputs = primary_outputs;
     graph.name_map = name_map;
-    for (const auto &p: name_map) {
-		graph.gate_map.insert(std::make_pair(p.second, p.first));
-	}
+    for (const auto& p : name_map) {
+        graph.gate_map.insert(std::make_pair(p.second, p.first));
+    }
 
     for (const auto& [name, signal] : signals) {
         uint32_t gate = name_map.at(name);
