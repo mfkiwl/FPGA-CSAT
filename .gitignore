@@ -2,3 +2,12 @@
 *.code-workspace
 tb_simulation_project
 verify_tb.tcl
+
+_x* 
+build_dir*
+.run
+*.log 
+*.jou
+emconfig.json
+main
+csat
