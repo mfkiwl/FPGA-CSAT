@@ -28,7 +28,7 @@ vector<string> findWordsInLine(const string& line) {
     vector<string> words;
     string current_word;
     for (const auto& c : line) {
-        if (isalpha(c) | c == '_' | c == '[' | c == ']' | (isdigit(c) & !current_word.empty())) {
+        if (isalpha(c) | (c == '_') | (c == '[') | (c == ']') | (isdigit(c) & !current_word.empty())) {
             current_word.push_back(c);
         } else if (!current_word.empty()) {
             words.push_back(current_word);
@@ -74,8 +74,8 @@ void parseGateLine(string line, string& name, string& formula, vector<string>& i
 struct Signal {
     Signal(string name, bool is_PI) : name(name), is_PI(is_PI){};                                                               // PI signal
     Signal(string name, string formula, vector<string> inputs) : name(name), is_PI(false), formula(formula), inputs(inputs){};  // Signal with boolean formula
-    bool is_PI;
     string name;
+    bool is_PI;
     string formula;
     vector<string> inputs;
     vector<string> outputs;

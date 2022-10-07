@@ -36,7 +36,7 @@ void debug_PrintCircuit(const vector<Gate>& circuit, const Graph& graph) {
         if (graph.nodes[gate].is_PI) {
             cout << "PI ";
         } else {
-            "inputs = {";
+            cout << "inputs = {";
             for (size_t i = 0; i < LUT_SIZE; i++) {
                 if (graph.nodes[gate].inputs[i] == NO_CONNECT) {
                     break;
