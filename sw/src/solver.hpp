@@ -2,6 +2,7 @@
 
 #include "circuit_encoder.hpp"
 #include "implication.hpp"
+#include "verify.hpp"
 
 enum Direction : bool { outwards = false,
                         inwards = true };
@@ -282,87 +283,10 @@ void Solver::solve() {
     }
 }
 
-std::string stringJoin(const std::vector<std::string>& lst, const std::string& delim) {
-    std::string ret;
-    for (const auto& s : lst) {
-        if (!ret.empty())
-            ret += delim;
-        ret += s;
-    }
-    return ret;
-}
-std::string verilogSelfMapping(const std::vector<std::string>& lst) {
-    std::string ret;
-    for (const auto& s : lst) {
-        if (!ret.empty())
-            ret += ", ";
-        ret += "." + s + "(" + s + ")";
-    }
-    return ret;
-}
-string sanitize(const string& s) {
-    return ('\\' + s + ' ');
-}
-vector<string> sanitize(const std::vector<std::string>& lst) {
-    vector<string> ret;
-    for (const auto& s : lst) {
-        ret.push_back(sanitize(s));
-    }
-    return ret;
-}
-
 void Solver::writeTestbench() {
-    string test_bench_path = "tb.v";
-    ofstream tb_out(test_bench_path);
-    if (!tb_out.good()) {
-        cout << "Opening " << test_bench_path << " failed" << endl;
-        throw invalid_argument("Opening .v file failed");
-    }
-
-    vector<string> pis = sanitize(graph.primary_inputs);
-    vector<string> pos = sanitize(graph.primary_outputs);
-
-    tb_out << "// Testbench tb.v written by CSAT_solver \n\n";
-    tb_out << "module tb ();\n";
-    tb_out << "  reg " << stringJoin(pis, ", ") << ";\n";
-    tb_out << "  wire " << stringJoin(pos, ", ") << ";\n";
-    tb_out << "  " << module_name << " UUT(" << verilogSelfMapping(pis) << ", " << verilogSelfMapping(pos) << ");\n";
-    tb_out << "  integer error_code;\n";
-    tb_out << "  initial begin\n";
-    for (const auto& e : satisfying_assignment) {
-        tb_out << "        " << sanitize(e.first) << " = " << e.second << ";\n";
-    }
-    tb_out << "        #1;\n";
-    tb_out << "        if (" << sanitize(output_to_satify) << " == 1) begin\n";
-    tb_out << "            $display(\"SUCCESS\");\n";
-    tb_out << "            error_code = 0;\n";
-    tb_out << "        end\n";
-    tb_out << "        else begin\n";
-    tb_out << "            $display(\"FAIL\");\n";
-    tb_out << "            error_code = 1;\n";
-    tb_out << "        end\n";
-    tb_out << "        $finish;\n";
-    tb_out << "    end\n";
-    tb_out << "endmodule\n";
+    verify::writeTestbench("tb.v", module_name, graph.primary_inputs, graph.primary_outputs, satisfying_assignment, output_to_satify);
 }
 
-/* Needs to be custom because ABC always writes the verilog module using the orignal name */
 void Solver::writeTCL() {
-    string tcl_path = "verify_tb.tcl";
-    ofstream tcl_out(tcl_path);
-    if (!tcl_out.good()) {
-        cout << "Opening " << tcl_path << " failed" << endl;
-        throw invalid_argument("Opening .tcl file failed");
-    }
-
-    tcl_out << "# Create project and launch simulation\n";
-    tcl_out << "create_project tb_simulation_project ./tb_simulation_project -force\n";
-    tcl_out << "add_files -norecurse {" << module_name << ".v tb.v}\n";
-    tcl_out << "update_compile_order -fileset sources_1\n";
-    tcl_out << "set_property top tb [get_filesets sim_1]\n";
-    tcl_out << "launch_simulation\n\n";
-    tcl_out << "# Grab the \"error_code\" signal from the simulation upon completion\n";
-    tcl_out << "set simError [get_value -radix unsigned /tb/error_code]\n\n";
-    tcl_out << "# Exit TCL script with the error code\n";
-    tcl_out << "exit $simError\n";
+    verify::writeTCL("verify_tb.tcl", module_name);
 }
