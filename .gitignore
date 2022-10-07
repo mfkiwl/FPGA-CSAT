@@ -2,6 +2,7 @@
 *.code-workspace
 tb_simulation_project
 verify_tb.tcl
+tb.v
 
 _x* 
 build_dir*
