@@ -11,9 +11,11 @@
 #include <vector>
 
 #include "kitty/include/kitty/kitty.hpp"
-#include "shared.hpp"
+#include "shared_parameters.hpp"
 
 using namespace std;
+
+typedef kitty::static_truth_table<LUT_SIZE> TruthTable;
 
 bool stringStartsWith(const string_view& str, const string_view& prefix) {
     return prefix.size() <= str.size() && str.rfind(prefix, 0) == 0;

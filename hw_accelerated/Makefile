@@ -14,15 +14,17 @@ KERNEL = solve
 VPP_PFLAGS := 
 CMD_ARGS =
 CMD_ARGS += $(BUILD_DIR)/$(KERNEL).xclbin
-CXXFLAGS += -I$(XILINX_XRT)/include -I$(XILINX_VIVADO)/include -Wall -O0 -g -std=c++1y
+CXXFLAGS += -I$(XILINX_XRT)/include -I$(XILINX_VIVADO)/include -Wall -O0 -g -std=c++17
 LDFLAGS += -L$(XILINX_XRT)/lib -pthread -lOpenCL
 
 LINK_OUTPUT := $(BUILD_DIR)/$(KERNEL).link.xclbin
 PACKAGE_OUT = ./package.$(TARGET)
 
+COMMONFLAGS = -I$(PROJ_ROOT)/../shared/src
+
 ############################## Setting up Host Variables ##############################
 #Include Required Host Source Files
-CXXFLAGS += -I$(PROJ_ROOT)/includes/xcl2
+CXXFLAGS += -I$(PROJ_ROOT)/includes/xcl2 $(COMMONFLAGS)
 HOST_SRCS += $(PROJ_ROOT)/includes/xcl2/xcl2.cpp ./src/host.cpp 
 
 # Host compiler global settings
@@ -31,7 +33,7 @@ LDFLAGS += -lrt -lstdc++
 
 ############################## Setting up Kernel Variables ##############################
 # Kernel compiler global settings
-VPP_FLAGS += -t $(TARGET) --platform $(PLATFORM) --save-temps --hls.pre_tcl $(PROJ_ROOT)/config/hls_config.tcl
+VPP_FLAGS += -t $(TARGET) --platform $(PLATFORM) --save-temps --hls.pre_tcl $(PROJ_ROOT)/config/hls_config.tcl $(COMMONFLAGS)
 
 EMCONFIG_DIR = $(TEMP_DIR)
 

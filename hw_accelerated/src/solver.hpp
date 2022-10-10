@@ -3,28 +3,29 @@
 #include <string>
 
 #include "circuit_encoder.hpp"
-#include "shared.hpp"
 #include "verify.hpp"
+#include "xcl2.hpp"
 
 using namespace std;
 
-class Solver() {
+class Solver {
+    public:
     Solver(string eqn_file_path, string gate_to_satisfy, string binary_file) : eqn_file_path(eqn_file_path), gate_to_satisfy(gate_to_satisfy), binary_file(binary_file) {}
-    solve();
+    void solve();
 
     string eqn_file_path;
     string gate_to_satisfy;
     string binary_file;
 };
 
-Solver::solve() {
+void Solver::solve() {
     cl_int err;
     cl::Context context;
     cl::Kernel csat_kernel;
     cl::CommandQueue q;
 
     auto devices = xcl::get_xil_devices();
-    auto fileBuf = xcl::read_binary_file(binaryFile);
+    auto fileBuf = xcl::read_binary_file(binary_file);
     cl::Program::Binaries bins{{fileBuf.data(), fileBuf.size()}};
     bool valid_device = false;
     for (unsigned int i = 0; i < devices.size(); i++) {
@@ -53,7 +54,6 @@ Solver::solve() {
     OCL_CHECK(err, cl::Buffer buffer_in2(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, vector_size_bytes, source_in2.data(), &err));
     OCL_CHECK(err, cl::Buffer buffer_output(context, CL_MEM_USE_HOST_PTR | CL_MEM_WRITE_ONLY, vector_size_bytes, source_hw_results.data(), &err));
 
-    int size = DATA_SIZE;
     OCL_CHECK(err, err = csat_kernel.setArg(0, buffer_in1));
     OCL_CHECK(err, err = csat_kernel.setArg(1, buffer_in2));
     OCL_CHECK(err, err = csat_kernel.setArg(2, buffer_output));
