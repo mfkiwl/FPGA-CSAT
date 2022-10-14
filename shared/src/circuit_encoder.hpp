@@ -15,6 +15,8 @@
 
 using namespace std;
 
+namespace encoder {
+
 typedef kitty::static_truth_table<LUT_SIZE> TruthTable;
 
 bool stringStartsWith(const string_view& str, const string_view& prefix) {
@@ -216,4 +218,5 @@ void parseEQN(string eqn_file_path, Graph& graph) {
             graph.nodes[gate].inputs[offset] = NO_CONNECT;
         }
     }
+}
 }

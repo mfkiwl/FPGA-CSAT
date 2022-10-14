@@ -3,6 +3,7 @@
 #include "ap_int.h"
 #include "parameters.hpp"
 #include "shared_parameters.hpp"
+#include "circuit_encoder.hpp"
 
 typedef ap_uint<TRUTH_TABLE_BITS> TruthTable;
 typedef ap_uint<GATE_ID_BITS> GateID;
@@ -13,12 +14,30 @@ typedef ap_uint<1> Direction;
 const Direction OUTWARDS = 0b0;
 const Direction INWARDS = 0b1;
 
-const GateID DECISION = -1;
+const GateID NO_CONNECT = GateID(encoder::NO_CONNECT);
+const GateID DECISION = GateID(-2);
+const GateID LEARNED = GateID(-3); // placeholder
+
+const uint32_t UNASSIGNED = -1;
+
+using encoder::OutPin;
 
 struct GateNode {
+    GateNode(encoder::GateNode gn) : is_pi(gn.is_PI){
+        for(size_t i = 0; i < LUT_SIZE; i++) {
+            inputs[i] = gn.inputs[i];
+        }
+        size_t i;
+        for(i = 0; i < gn.outputs.size(); i++) {
+            outputs[i] = gn.outputs[i];
+        }
+        for(; i < MAX_FANOUT; i++) {
+            outputs[i].gate = encoder::NO_CONNECT;
+        }
+    }
     bool is_pi;
     uint32_t inputs[LUT_SIZE];
-    uint32_t outputs[MAX_FANOUT];
+    OutPin outputs[MAX_FANOUT];
 };
 
 struct GateState : ap_uint<2 * (LUT_SIZE + 1)> {

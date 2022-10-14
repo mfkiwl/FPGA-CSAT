@@ -7,6 +7,16 @@ const PinValue ONE = 0b01;
 const PinValue DONTCARE = 0b10;
 const PinValue UNKNOWN = 0b11;
 
+PinValue invert(const PinValue& x) {
+    if (x == ZERO) {
+        return ONE;
+    } else if (x == ONE) {
+        return ZERO;
+    } else {
+        return UNKNOWN;
+    }
+}
+
 /* Generates all nth varariable truth tables, as well as their inverse
  * for example (with N 3) mask_tables =
  *   01010101 10101010
