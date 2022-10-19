@@ -4,27 +4,25 @@
 #include "implication.hpp"
 #include "verify.hpp"
 
+using namespace encoder;
+
 enum Direction : bool { outwards = false,
                         inwards = true };
 
-typedef uint32_t Antecedent;
-const Antecedent DECISION = Antecedent(-1);
-
 struct PinAssignment {
-    PinAssignment(uint32_t to, PinValue val) : to_gate(to), direction(Direction::outwards), value(val) {}
-    PinAssignment(OutPin to, PinValue val) : to_gate(to.gate), to_offset(to.offset), direction(Direction::inwards), value(val) {}
-    uint32_t to_gate;
+    PinAssignment(GateID to, PinValue val) : to(to), direction(Direction::outwards), value(val) {}
+    PinAssignment(OutPin to, PinValue val) : to(to.gate), to_offset(to.offset), direction(Direction::inwards), value(val) {}
+    GateID to;
     uint8_t to_offset;
     Direction direction;
     PinValue value;
 };
 
 struct Propagation {
-    Propagation(Antecedent from, uint32_t to, PinValue val) : from(static_cast<uint32_t>(from)), to_gate(to), direction(Direction::outwards), value(val) {}
-    Propagation(Antecedent from, OutPin to, PinValue val) : from(static_cast<uint32_t>(from)), to_gate(to.gate), to_offset(to.offset), direction(Direction::inwards), value(val) {}
-    uint32_t from;
-    uint32_t to_gate;
-    uint8_t to_offset;
+    Propagation(GateID from, GateID to, uint8_t sink_offset, Direction direction, PinValue val) : from(from), to(to), sink_offset(sink_offset), direction(direction), value(val) {}
+    GateID from;
+    GateID to;
+    uint8_t sink_offset;
     Direction direction;
     PinValue value;
 };
@@ -109,9 +107,14 @@ void Solver::solve() {
     uint32_t pi_assigned_count = 0;
     conflict_count = 0;
 
+    const uint32_t UNASSIGNED = uint32_t(-1);
+    vector<uint32_t> level_assigned(num_gates, UNASSIGNED);
+    vector<vector<bool>> stamp(num_gates, vector<bool>(LUT_SIZE + 1, false));
+    vector<OutPin> antecedent(num_gates);
+
     vector<PinAssignment> trail;
     vector<Propagation> propagation_queue;
-    propagation_queue.push_back(Propagation(DECISION, graph.name_map.at(output_to_satify), PinValue::one));
+    propagation_queue.push_back(Propagation(DECISION, graph.name_map.at(output_to_satify), 0, outwards, PinValue::one));
 
     // lambda to detect conflict
     auto conflictingAssign = [](const PinValue& old_value, const PinValue& new_value) {
@@ -124,11 +127,17 @@ void Solver::solve() {
     while (true) {
         /* PROPAGATION */
         bool conflict_occurred = false;
+        struct {
+            GateID source_gate;
+            GateID sink_gate;
+            uint8_t sink_offset;
+        } conflict_wire;
         uint32_t p = 0;
         while (p < propagation_queue.size()) {
             const Propagation prop = propagation_queue[p];
-            const uint32_t from_gate = propagation_queue[p].from;
-            const uint32_t g = propagation_queue[p].to_gate;
+            const GateID from = propagation_queue[p].from;
+            const GateID g = propagation_queue[p].to;
+            const uint8_t sink_offset = prop.sink_offset;
             const PinValue new_val = prop.value;
 
             Gate new_gate_state = circuit[g];
@@ -137,6 +146,9 @@ void Solver::solve() {
             if (prop.direction == outwards) {
                 if (conflictingAssign(circuit[g].output_pin, new_val)) {
                     conflict_occurred = true;
+                    conflict_wire.source_gate = g;
+                    conflict_wire.sink_gate = from;
+                    conflict_wire.sink_offset = sink_offset;
                     break;
                 }
                 if (circuit[g].output_pin == new_val) {
@@ -149,15 +161,17 @@ void Solver::solve() {
                     pi_assigned_count++;
                 }
             } else if (prop.direction == inwards) {
-                const uint8_t offset = prop.to_offset;
-                if (conflictingAssign(circuit[g].input_pins[offset], new_val)) {
+                if (conflictingAssign(circuit[g].input_pins[sink_offset], new_val)) {
                     conflict_occurred = true;
+                    conflict_wire.source_gate = from;
+                    conflict_wire.sink_gate = g;
+                    conflict_wire.sink_offset = sink_offset;
                     break;
                 }
-                if (circuit[g].input_pins[offset] == new_val) {
+                if (circuit[g].input_pins[sink_offset] == new_val) {
                     goto Next_Propagation;
                 }
-                new_gate_state.input_pins[offset] = new_val;
+                new_gate_state.input_pins[sink_offset] = new_val;
             }
 
             // IMPLY (this can happen in parallel after ASSIGN as pin implications are independent)
@@ -167,7 +181,7 @@ void Solver::solve() {
             }
             for (uint8_t i = 0; i < LUT_SIZE; i++) {
                 if (nodes[g].inputs[i] == NO_CONNECT) {
-                    continue;
+                    break;
                 }
                 if (new_gate_state.input_pins[i] == PinValue::unknown) {
                     new_gate_state.input_pins[i] = calculateInputImplication(new_gate_state, i);
@@ -177,25 +191,31 @@ void Solver::solve() {
             // RECORD trail history and QUEUE propagations
             if (circuit[g].output_pin != new_gate_state.output_pin) {
                 trail.push_back(PinAssignment(g, new_gate_state.output_pin));
+                if (prop.direction == outwards) {
+                    antecedent[g] = {from, sink_offset};
+                } else {
+                    antecedent[g] = {SELF, 0};
+                }
+                level_assigned[g] = decision_level;
                 for (size_t i = 0; i < nodes[g].outputs.size(); i++) {
                     // preemptively skip originating gate if it was the antecedent (splinter blast)
-                    if (prop.direction == outwards && nodes[g].outputs[i].gate == from_gate) {
+                    if (prop.direction == outwards && nodes[g].outputs[i].gate == from) {
                         continue;
                     }
-                    propagation_queue.push_back(Propagation(static_cast<Antecedent>(g), nodes[g].outputs[i], new_gate_state.output_pin));
+                    propagation_queue.push_back(Propagation(g, nodes[g].outputs[i].gate, nodes[g].outputs[i].offset, inwards, new_gate_state.output_pin));
                 }
             }
             for (uint8_t i = 0; i < LUT_SIZE; i++) {
                 if (nodes[g].inputs[i] == NO_CONNECT) {
-                    continue;
+                    break;
                 }
                 if (circuit[g].input_pins[i] != new_gate_state.input_pins[i]) {
                     trail.push_back(PinAssignment({g, i}, new_gate_state.input_pins[i]));
-                    // preemptively skip originating gate if it was the antecedent (rebound) 
-                    if(prop.direction == inwards && prop.to_offset == i) {
+                    // preemptively skip originating gate if it was the antecedent (rebound)
+                    if (prop.direction == inwards && prop.sink_offset == i) {
                         continue;
                     }
-                    propagation_queue.push_back(Propagation(g, static_cast<uint32_t>(nodes[g].inputs[i]), new_gate_state.input_pins[i]));
+                    propagation_queue.push_back(Propagation(g, nodes[g].inputs[i], i, outwards, new_gate_state.input_pins[i]));
                 }
             }
 
@@ -217,32 +237,100 @@ void Solver::solve() {
                 return;
             }
             /* CONFLICT ANALYSIS */
-            uint32_t backtrack_level = decision_level - 1;
+            uint32_t backjump_level = 0;
+            uint32_t UIP_step = trail_lim[decision_level - 1];
+            uint32_t pins_stamped = 2;
 
-            /* CANCEL UNTIL */
-            for (uint32_t t = trail.size() - 1; t >= trail_lim[backtrack_level]; t--) {
+            stamp[conflict_wire.source_gate][LUT_SIZE] = true;
+            stamp[conflict_wire.sink_gate][conflict_wire.sink_offset] = true;
+
+            for (uint32_t t = trail.size() - 1; t >= trail_lim[decision_level - 1]; t--) {
                 PinAssignment& pa = trail[t];
-                if (nodes[pa.to_gate].is_PI) {
+                uint8_t pin_index = (pa.direction == Direction::outwards) ? LUT_SIZE : pa.to_offset;
+                if (backjump_level == decision_level - 1) {
+                    // early termination for worse case
+                    break;
+                }
+                if (stamp[pa.to][pin_index]) {
+                    OutPin ante = antecedent[pa.to];
+                    if (pa.direction == Direction::outwards && pins_stamped == 1) {
+                        // Check for 1-UIP only on major pins
+                        UIP_step = t;
+                        break;
+                    } else if (pa.direction == Direction::inwards || ante.gate == SELF) {
+                        // Include gate in the conflict
+                        for (uint8_t i = 0; i < LUT_SIZE; i++) {
+                            GateID major_pin = nodes[pa.to].inputs[i];
+                            if (major_pin == NO_CONNECT) {
+                                break;
+                            }
+                            // Stamp pins assigned @d and collate the backjump_level
+                            if (level_assigned[major_pin] == decision_level) {
+                                if (stamp[major_pin][LUT_SIZE] == false) {
+                                    stamp[major_pin][LUT_SIZE] = true;
+                                    pins_stamped++;
+                                }
+                            } else if (level_assigned[major_pin] != UNASSIGNED) {
+                                backjump_level = max(backjump_level, level_assigned[major_pin]);
+                            }
+                        }
+                        // Do the same for the output pin
+                        if (level_assigned[pa.to] == decision_level) {
+                            if (stamp[pa.to][LUT_SIZE] == false) {
+                                stamp[pa.to][LUT_SIZE] = true;
+                                pins_stamped++;
+                            }
+                        } else if (level_assigned[pa.to] != UNASSIGNED) {
+                            backjump_level = max(backjump_level, level_assigned[pa.to]);
+                        }
+                    } else if (ante.gate == DECISION) {
+                        assert(level_assigned[pa.to] < decision_level);
+                        backjump_level = max(backjump_level, level_assigned[pa.to]);
+                    } else if (ante.gate == LEARNED) {
+                        if (level_assigned[ante.gate] == decision_level) {
+                            // Since we don't store the learned gate, if we need to include the learned gate in the conflict, the worse case would be the prior level
+                            backjump_level = decision_level - 1;
+                        } else {
+                            backjump_level = max(backjump_level, level_assigned[ante.gate]);
+                        }
+                    } else {
+                        // Stamp antecedent pin
+                        stamp[ante.gate][ante.offset] = true;
+                        pins_stamped++;
+                    }
+                    stamp[pa.to][pin_index] = false;
+                    pins_stamped--;
+                }
+                // unassign to prevent pins becoming irresolvably stamped
+                if (pa.direction == Direction::outwards) {
+                    level_assigned[pa.to] = UNASSIGNED;
+                }
+            }
+
+            /* CANCEL UNTIL*/
+            for (uint32_t t = trail.size() - 1; t >= trail_lim[backjump_level]; t--) {
+                PinAssignment& pa = trail[t];
+                if (nodes[pa.to].is_PI) {
                     pi_assigned_count--;
                 }
                 if (pa.direction == Direction::outwards) {
-                    circuit[pa.to_gate].output_pin = PinValue::unknown;
+                    circuit[pa.to].output_pin = PinValue::unknown;
+                    level_assigned[pa.to] = UNASSIGNED;
                 } else {
-                    circuit[pa.to_gate].input_pins[pa.to_offset] = PinValue::unknown;
+                    circuit[pa.to].input_pins[pa.to_offset] = PinValue::unknown;
                 }
             }
 
             /* RECONSIDER */
-            PinAssignment reconsider = trail[trail_lim[backtrack_level]];
+            PinAssignment reconsider = trail[UIP_step];
             reconsider.value = (reconsider.value == PinValue::one) ? PinValue::zero : PinValue::one;
-            trail.erase(trail.begin() + trail_lim[backtrack_level], trail.end());
+            trail.erase(trail.begin() + trail_lim[backjump_level], trail.end());
             branch_lim.pop_back();
             trail_lim.pop_back();
-            decision_level = backtrack_level;
+            decision_level = backjump_level;
 
-            Propagation branching_assignment(DECISION, reconsider.to_gate, reconsider.value);
+            Propagation branching_assignment(LEARNED, reconsider.to, 0, outwards, reconsider.value);
             propagation_queue.push_back(branching_assignment);
-
         } else if (pi_assigned_count == num_pis) {
             /* SAT */
             cout << "SAT" << endl;
@@ -277,7 +365,7 @@ void Solver::solve() {
             }
             branch_lim.push_back(pi_index + 1);
 
-            Propagation branching_assignment(DECISION, branch_gate, PinValue::one);
+            Propagation branching_assignment(DECISION, branch_gate, 0, outwards, PinValue::one);
             propagation_queue.push_back(branching_assignment);
         }
     }

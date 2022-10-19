@@ -3,7 +3,7 @@
 #include <array>
 
 #include "kitty/include/kitty/kitty.hpp"
-#include "shared.hpp"
+#include "shared_parameters.hpp"
 
 using namespace std;
 
