@@ -72,6 +72,7 @@ class Solver {
     void writeTCL();
 
     string output_to_satify;
+    string benchmark_dir;
     string module_name;
     Graph graph;
 
@@ -113,6 +114,7 @@ class Solver {
 Solver::Solver(string eqn_file_path, string output_to_satify) : output_to_satify(output_to_satify) {
     std::string file_name = eqn_file_path.substr(eqn_file_path.find_last_of("/") + 1);
     std::string::size_type const p(file_name.find_last_of('.'));
+    benchmark_dir = eqn_file_path.substr(0, eqn_file_path.find_last_of("/") + 1);
     module_name = file_name.substr(0, p);
     cout << "module_name = " << module_name << endl;
     parseEQN(eqn_file_path, graph);
@@ -421,5 +423,5 @@ void Solver::writeTestbench() {
 }
 
 void Solver::writeTCL() {
-    verify::writeTCL("verify_tb.tcl", module_name);
+    verify::writeTCL("verify_tb.tcl", benchmark_dir, module_name);
 }
