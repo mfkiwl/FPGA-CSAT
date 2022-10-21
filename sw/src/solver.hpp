@@ -5,6 +5,7 @@
 #include "verify.hpp"
 
 using namespace encoder;
+using namespace std;
 
 enum Direction : bool { outwards = false,
                         inwards = true };
@@ -51,11 +52,8 @@ void debug_PrintCircuit(const vector<Gate>& circuit, const Graph& graph) {
 
 bool debug_CircuitIsCoherent(const vector<Gate>& circuit, const Graph& graph) {
     for (size_t gate = 0; gate < graph.nodes.size(); gate++) {
-        for (size_t i = 0; i < LUT_SIZE; i++) {
-            if (graph.nodes[gate].inputs[i] == NO_CONNECT) {
-                break;
-            }
-            if (circuit[gate].input_pins[i] != circuit[graph.nodes[gate].inputs[i]].output_pin) {
+        for (auto out_pin : graph.nodes[gate].outputs) {
+            if (circuit[gate].output_pin != circuit[out_pin.gate].input_pins[out_pin.offset]) {
                 cout << "Coherency check failed!" << endl;
                 return false;
             }
@@ -163,11 +161,12 @@ void Solver::solve() {
             conflictAnalysis(conflict_wire, backjump_level, UIP_step);
 
             cancelUntil(backjump_level);
+            assert(debug_CircuitIsCoherent(circuit, graph));
             reconsider(backjump_level, UIP_step);
         } else if (pi_assigned_count == num_pis) {
             /* SAT */
             cout << "SAT" << endl;
-            debug_PrintCircuit(circuit, graph);
+            // debug_PrintCircuit(circuit, graph);
             is_sat = true;
             loadSatisfyingAssignment();
             return;
@@ -292,6 +291,7 @@ void Solver::conflictAnalysis(const ConflictWire& conflict_wire, uint32_t& backj
     uint32_t pins_stamped = 2;
     stamp[conflict_wire.source_gate][LUT_SIZE] = true;
     stamp[conflict_wire.sink_gate][conflict_wire.sink_offset] = true;
+    cout << "\nConflict Analysis: d = " << decision_level << endl;
 
     bool UIP_found = false;
     for (uint32_t t = trail.size() - 1; UIP_found == false; t--) {
@@ -355,6 +355,8 @@ void Solver::conflictAnalysis(const ConflictWire& conflict_wire, uint32_t& backj
             level_assigned[pa.to] = UNASSIGNED;
         }
     }
+    assert(pins_stamped == 0);
+    cout << "\tbackjump_level = " << backjump_level << endl;
 }
 
 void Solver::cancelUntil(uint32_t& backjump_level) {

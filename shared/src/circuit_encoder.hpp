@@ -159,7 +159,6 @@ void parseEQN(string eqn_file_path, Graph& graph) {
             continue;
         } else if (stringStartsWith(line, "INORDER")) {
             parseSignals(line, infile, primary_inputs);
-            cout << primary_inputs.size() << " primary inputs read." << endl;
             for (const string& name : primary_inputs) {
                 Signal s = {name, true};
                 carefulSignalInsert(signals, {name, s});
@@ -169,7 +168,6 @@ void parseEQN(string eqn_file_path, Graph& graph) {
         } else if (stringStartsWith(line, "OUTORDER")) {
             // Signal creation is deferred until the definition is encountered
             parseSignals(line, infile, primary_outputs);
-            cout << primary_outputs.size() << " primary outputs read." << endl;
         } else {
             string name, formula;
             vector<string> inputs;
