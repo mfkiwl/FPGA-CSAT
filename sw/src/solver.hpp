@@ -106,7 +106,8 @@ class Solver {
     vector<OutPin> antecedent;
     vector<PinAssignment> trail;
 
-    vector<vector<bool>> stamp;
+    vector<vector<uint32_t>> activity;
+    vector<vector<bool>> stamped;
 };
 
 Solver::Solver(string eqn_file_path, string output_to_satify) : output_to_satify(output_to_satify) {
@@ -138,7 +139,8 @@ void Solver::solve() {
     antecedent = vector<OutPin>(num_gates);
     propagation_queue.push_back(Propagation(DECISION, graph.name_map.at(output_to_satify), 0, outwards, PinValue::one));
 
-    stamp = vector<vector<bool>>(num_gates, vector<bool>(LUT_SIZE + 1, false));
+    stamped = vector<vector<bool>>(num_gates, vector<bool>(LUT_SIZE + 1, false));
+    activity = vector<vector<uint32_t>>(graph.nodes.size(), vector<uint32_t>(LUT_SIZE + 1, 0));
 
     while (true) {
         bool conflict_occurred;
@@ -288,10 +290,23 @@ void Solver::conflictAnalysis(const ConflictWire& conflict_wire, uint32_t& backj
     backjump_level = 0;
     UIP_step = trail_lim[decision_level - 1];
 
-    uint32_t pins_stamped = 2;
-    stamp[conflict_wire.source_gate][LUT_SIZE] = true;
-    stamp[conflict_wire.sink_gate][conflict_wire.sink_offset] = true;
+    uint32_t pins_stamped = 0;
+
+    auto stamp = [&](GateID gate, uint8_t index) {
+        stamped[gate][index] = true;
+        pins_stamped++;
+        activity[gate][index]++;
+        cout << to_string(gate) + "[" + to_string(+index) + "] = " << activity[gate][index] << endl;
+    };
+    auto unstamp = [&](GateID gate, uint8_t index) {
+        stamped[gate][index] = false;
+        pins_stamped--;
+    };
+
     cout << "\nConflict Analysis: d = " << decision_level << endl;
+
+    stamp(conflict_wire.source_gate, LUT_SIZE);
+    stamp(conflict_wire.sink_gate, conflict_wire.sink_offset);
 
     bool UIP_found = false;
     for (uint32_t t = trail.size() - 1; UIP_found == false; t--) {
@@ -300,7 +315,7 @@ void Solver::conflictAnalysis(const ConflictWire& conflict_wire, uint32_t& backj
         }
         PinAssignment& pa = trail[t];
         uint32_t pin_index = (pa.direction == Direction::outwards) ? LUT_SIZE : pa.to_offset;
-        if (stamp[pa.to][pin_index]) {
+        if (stamped[pa.to][pin_index]) {
             OutPin ante = antecedent[pa.to];
             if (pa.direction == Direction::outwards && pins_stamped == 1) {
                 // Check for 1-UIP only on major pins
@@ -315,9 +330,8 @@ void Solver::conflictAnalysis(const ConflictWire& conflict_wire, uint32_t& backj
                     }
                     // Stamp pins assigned @d and collate the backjump_level
                     if (level_assigned[major_pin] == decision_level) {
-                        if (stamp[major_pin][LUT_SIZE] == false) {
-                            stamp[major_pin][LUT_SIZE] = true;
-                            pins_stamped++;
+                        if (stamped[major_pin][LUT_SIZE] == false) {
+                            stamp(major_pin, LUT_SIZE);
                         }
                     } else if (level_assigned[major_pin] != UNASSIGNED) {
                         backjump_level = max(backjump_level, level_assigned[major_pin]);
@@ -325,9 +339,8 @@ void Solver::conflictAnalysis(const ConflictWire& conflict_wire, uint32_t& backj
                 }
                 // Do the same for the output pin
                 if (level_assigned[pa.to] == decision_level) {
-                    if (stamp[pa.to][LUT_SIZE] == false) {
-                        stamp[pa.to][LUT_SIZE] = true;
-                        pins_stamped++;
+                    if (stamped[pa.to][LUT_SIZE] == false) {
+                        stamp(pa.to, LUT_SIZE);
                     }
                 } else if (level_assigned[pa.to] != UNASSIGNED) {
                     backjump_level = max(backjump_level, level_assigned[pa.to]);
@@ -343,12 +356,9 @@ void Solver::conflictAnalysis(const ConflictWire& conflict_wire, uint32_t& backj
                     backjump_level = max(backjump_level, level_assigned[pa.to]);
                 }
             } else {
-                // Stamp antecedent pin
-                stamp[ante.gate][ante.offset] = true;
-                pins_stamped++;
+                stamp(ante.gate, ante.offset);
             }
-            stamp[pa.to][pin_index] = false;
-            pins_stamped--;
+            unstamp(pa.to, pin_index);
         }
         // unassign to prevent pins becoming irresolvably stamped
         if (pa.direction == Direction::outwards) {
@@ -381,7 +391,7 @@ void Solver::reconsider(uint32_t& backjump_level, uint32_t& UIP_step) {
     branch_lim.erase(branch_lim.begin() + backjump_level + 1, branch_lim.end());
     trail_lim.erase(trail_lim.begin() + backjump_level, trail_lim.end());
     decision_level = backjump_level;
-
+    cout << "Reconsider: " << assignment.to << " = " << assignment.value << endl;
     Propagation branching_assignment(LEARNED, assignment.to, 0, outwards, assignment.value);
     propagation_queue.push_back(branching_assignment);
 }
