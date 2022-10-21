@@ -293,19 +293,19 @@ void Solver::conflictAnalysis(const ConflictWire& conflict_wire, uint32_t& backj
     stamp[conflict_wire.source_gate][LUT_SIZE] = true;
     stamp[conflict_wire.sink_gate][conflict_wire.sink_offset] = true;
 
-    for (uint32_t t = trail.size() - 1; t >= trail_lim[decision_level - 1]; t--) {
-        PinAssignment& pa = trail[t];
-        uint8_t pin_index = (pa.direction == Direction::outwards) ? LUT_SIZE : pa.to_offset;
-        if (backjump_level == decision_level - 1) {
-            // early termination for worse case
-            break;
+    bool UIP_found = false;
+    for (uint32_t t = trail.size() - 1; UIP_found == false; t--) {
+        if (t < trail_lim[decision_level - 1]) {
+            throw logic_error("1UIP should have been detected before we reach the end of the trail segment");
         }
+        PinAssignment& pa = trail[t];
+        uint32_t pin_index = (pa.direction == Direction::outwards) ? LUT_SIZE : pa.to_offset;
         if (stamp[pa.to][pin_index]) {
             OutPin ante = antecedent[pa.to];
             if (pa.direction == Direction::outwards && pins_stamped == 1) {
                 // Check for 1-UIP only on major pins
                 UIP_step = t;
-                break;
+                UIP_found = true;
             } else if (pa.direction == Direction::inwards || ante.gate == SELF) {
                 // Include gate in the conflict
                 for (uint8_t i = 0; i < LUT_SIZE; i++) {
@@ -336,11 +336,11 @@ void Solver::conflictAnalysis(const ConflictWire& conflict_wire, uint32_t& backj
                 assert(level_assigned[pa.to] < decision_level);
                 backjump_level = max(backjump_level, level_assigned[pa.to]);
             } else if (ante.gate == LEARNED) {
-                if (level_assigned[ante.gate] == decision_level) {
+                if (level_assigned[pa.to] == decision_level) {
                     // Since we don't store the learned gate, if we need to include the learned gate in the conflict, the worse case would be the prior level
                     backjump_level = decision_level - 1;
                 } else {
-                    backjump_level = max(backjump_level, level_assigned[ante.gate]);
+                    backjump_level = max(backjump_level, level_assigned[pa.to]);
                 }
             } else {
                 // Stamp antecedent pin
@@ -376,8 +376,8 @@ void Solver::reconsider(uint32_t& backjump_level, uint32_t& UIP_step) {
     PinAssignment assignment = trail[UIP_step];
     assignment.value = (assignment.value == PinValue::one) ? PinValue::zero : PinValue::one;
     trail.erase(trail.begin() + trail_lim[backjump_level], trail.end());
-    branch_lim.pop_back();
-    trail_lim.pop_back();
+    branch_lim.erase(branch_lim.begin() + backjump_level + 1, branch_lim.end());
+    trail_lim.erase(trail_lim.begin() + backjump_level, trail_lim.end());
     decision_level = backjump_level;
 
     Propagation branching_assignment(LEARNED, assignment.to, 0, outwards, assignment.value);
@@ -385,13 +385,14 @@ void Solver::reconsider(uint32_t& backjump_level, uint32_t& UIP_step) {
 }
 
 void Solver::branch() {
-    decision_level++;
+    assert(trail_lim.size() == decision_level);
+    assert(branch_lim.size() == decision_level + 1);
     trail_lim.push_back(trail.size());
 
     // Search for next unknown primary input
     uint32_t pi_index;
     uint32_t branch_gate;
-    for (pi_index = branch_lim[decision_level - 1];; pi_index++) {
+    for (pi_index = branch_lim[decision_level];; pi_index++) {
         if (pi_index >= graph.primary_inputs.size()) {
             throw overflow_error("Error: there are no more PIs to pick from");
         }
@@ -405,6 +406,7 @@ void Solver::branch() {
 
     Propagation branching_assignment(DECISION, branch_gate, 0, outwards, PinValue::one);
     propagation_queue.push_back(branching_assignment);
+    decision_level++;
 }
 
 void Solver::loadSatisfyingAssignment() {
