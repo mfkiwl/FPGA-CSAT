@@ -62,6 +62,56 @@ bool debug_CircuitIsCoherent(const vector<Gate>& circuit, const Graph& graph) {
     return true;
 }
 
+struct ArrayQueue {
+   public:
+    ArrayQueue(size_t size = 0) : m_head(_NULL), m_vector(vector<Entry>(size)) {
+        for (int i = size - 1; i > -1; i--) {
+            queue(i);
+        }
+    };
+    void bump(size_t i) {
+        unqueue(i);
+        queue(i);
+    };
+    void unqueue(size_t i) {
+        Entry& e = m_vector[i];
+        if (i == m_head) {
+            m_head = e.forward;
+        }
+        if (e.backward != _NULL) {
+            m_vector[e.backward].forward = e.forward;
+        }
+        if (e.forward != _NULL) {
+            m_vector[e.forward].backward = e.backward;
+        }
+        e.forward = _NULL;
+        e.backward = _NULL;
+    };
+    void queue(size_t i) {
+        if (m_head == _NULL) {
+            m_head = i;
+        } else if (i != m_head) {
+            Entry& e = m_vector[i];
+            m_vector[m_head].backward = i;
+            e.forward = m_head;
+            e.backward = _NULL;
+            m_head = i;
+        }
+    };
+    size_t next(size_t i) {
+        return m_vector[i].forward;
+    }
+    static const size_t _NULL = size_t(-1);
+    struct Entry {
+        Entry() : forward(_NULL), backward(_NULL){};
+        size_t forward;
+        size_t backward;
+    };
+
+    size_t m_head;
+    vector<Entry> m_vector;
+};
+
 class Solver {
    public:
     Solver(string eqn_file_path, string output_to_satify);
@@ -90,15 +140,17 @@ class Solver {
     void conflictAnalysis(const ConflictWire& conflict_wire, uint32_t& backjump_level, uint32_t& UIP_step);
     void cancelUntil(uint32_t& backjump_level);
     void reconsider(uint32_t& backjump_level, uint32_t& UIP_step);
-    void branch();
+    bool branchStatic();
+    bool branchVMTF();
     void loadSatisfyingAssignment();
 
     const uint32_t UNASSIGNED = uint32_t(-1);
 
     uint32_t decision_level;
     vector<uint32_t> trail_lim;
-    vector<uint32_t> branch_lim;  // Keeps track of where the next branching gate search should start
-    uint32_t pi_assigned_count;
+    vector<uint32_t> static_next_search;
+    uint32_t VMTF_next_search;
+    ArrayQueue VMTF_queue;
 
     vector<Propagation> propagation_queue;
     vector<Gate> circuit;
@@ -106,7 +158,6 @@ class Solver {
     vector<OutPin> antecedent;
     vector<PinAssignment> trail;
 
-    vector<vector<uint32_t>> activity;
     vector<vector<bool>> stamped;
 };
 
@@ -122,7 +173,6 @@ Solver::Solver(string eqn_file_path, string output_to_satify) : output_to_satify
 void Solver::solve() {
     const vector<GateNode>& nodes = graph.nodes;
     const size_t num_gates = nodes.size();
-    const size_t num_pis = graph.primary_inputs.size();
 
     // Copy TT encoding from graph to ephemeral circuit for localized processing (relevant for FPGA)
     circuit.resize(num_gates);
@@ -131,16 +181,17 @@ void Solver::solve() {
     }
 
     decision_level = 0;
-    branch_lim = {0};
-    pi_assigned_count = 0;
     conflict_count = 0;
+
+    static_next_search = {0};
+    VMTF_queue = ArrayQueue(num_gates);
+    VMTF_next_search = VMTF_queue.m_head;
 
     level_assigned = vector<uint32_t>(num_gates, UNASSIGNED);
     antecedent = vector<OutPin>(num_gates);
     propagation_queue.push_back(Propagation(DECISION, graph.name_map.at(output_to_satify), 0, outwards, PinValue::one));
 
     stamped = vector<vector<bool>>(num_gates, vector<bool>(LUT_SIZE + 1, false));
-    activity = vector<vector<uint32_t>>(graph.nodes.size(), vector<uint32_t>(LUT_SIZE + 1, 0));
 
     while (true) {
         bool conflict_occurred;
@@ -165,15 +216,19 @@ void Solver::solve() {
             cancelUntil(backjump_level);
             assert(debug_CircuitIsCoherent(circuit, graph));
             reconsider(backjump_level, UIP_step);
-        } else if (pi_assigned_count == num_pis) {
-            /* SAT */
-            cout << "SAT" << endl;
-            // debug_PrintCircuit(circuit, graph);
-            is_sat = true;
-            loadSatisfyingAssignment();
-            return;
         } else {
-            branch();
+            if (!branchVMTF()) {
+                for (auto pi_name : graph.primary_inputs) {
+                    GateID branch_gate = graph.name_map.at(pi_name);
+                    assert(circuit[branch_gate].output_pin != PinValue::unknown);
+                }
+                /* SAT */
+                cout << "SAT" << endl;
+                // debug_PrintCircuit(circuit, graph);
+                is_sat = true;
+                loadSatisfyingAssignment();
+                return;
+            }
         }
     }
 }
@@ -205,11 +260,6 @@ void Solver::propagate(bool& conflict_occurred, ConflictWire& conflict_wire) {
                 goto Next_Propagation;
             }
             new_gate_state.output_pin = new_val;
-
-            // Maintain primary inputs assigned count
-            if (nodes[g].is_PI) {
-                pi_assigned_count++;
-            }
         } else if (prop.direction == inwards) {
             if (conflictingAssign(circuit[g].input_pins[sink_offset], new_val)) {
                 conflict_occurred = true;
@@ -289,14 +339,11 @@ void Solver::conflictAnalysis(const ConflictWire& conflict_wire, uint32_t& backj
 
     backjump_level = 0;
     UIP_step = trail_lim[decision_level - 1];
-
     uint32_t pins_stamped = 0;
 
     auto stamp = [&](GateID gate, uint8_t index) {
         stamped[gate][index] = true;
         pins_stamped++;
-        activity[gate][index]++;
-        cout << to_string(gate) + "[" + to_string(+index) + "] = " << activity[gate][index] << endl;
     };
     auto unstamp = [&](GateID gate, uint8_t index) {
         stamped[gate][index] = false;
@@ -316,6 +363,9 @@ void Solver::conflictAnalysis(const ConflictWire& conflict_wire, uint32_t& backj
         PinAssignment& pa = trail[t];
         uint32_t pin_index = (pa.direction == Direction::outwards) ? LUT_SIZE : pa.to_offset;
         if (stamped[pa.to][pin_index]) {
+            if (pa.direction == Direction::outwards) {
+                VMTF_queue.bump(pa.to);
+            }
             OutPin ante = antecedent[pa.to];
             if (pa.direction == Direction::outwards && pins_stamped == 1) {
                 // Check for 1-UIP only on major pins
@@ -366,15 +416,16 @@ void Solver::conflictAnalysis(const ConflictWire& conflict_wire, uint32_t& backj
         }
     }
     assert(pins_stamped == 0);
+
+    VMTF_next_search = VMTF_queue.m_head;
+    static_next_search.erase(static_next_search.begin() + backjump_level + 1, static_next_search.end());
+
     cout << "\tbackjump_level = " << backjump_level << endl;
 }
 
 void Solver::cancelUntil(uint32_t& backjump_level) {
     for (uint32_t t = trail.size() - 1; t >= trail_lim[backjump_level]; t--) {
         PinAssignment& pa = trail[t];
-        if (graph.nodes[pa.to].is_PI) {
-            pi_assigned_count--;
-        }
         if (pa.direction == Direction::outwards) {
             circuit[pa.to].output_pin = PinValue::unknown;
             level_assigned[pa.to] = UNASSIGNED;
@@ -388,7 +439,6 @@ void Solver::reconsider(uint32_t& backjump_level, uint32_t& UIP_step) {
     PinAssignment assignment = trail[UIP_step];
     assignment.value = (assignment.value == PinValue::one) ? PinValue::zero : PinValue::one;
     trail.erase(trail.begin() + trail_lim[backjump_level], trail.end());
-    branch_lim.erase(branch_lim.begin() + backjump_level + 1, branch_lim.end());
     trail_lim.erase(trail_lim.begin() + backjump_level, trail_lim.end());
     decision_level = backjump_level;
     cout << "Reconsider: " << assignment.to << " = " << assignment.value << endl;
@@ -396,29 +446,47 @@ void Solver::reconsider(uint32_t& backjump_level, uint32_t& UIP_step) {
     propagation_queue.push_back(branching_assignment);
 }
 
-void Solver::branch() {
+bool Solver::branchStatic() {
     assert(trail_lim.size() == decision_level);
-    assert(branch_lim.size() == decision_level + 1);
+    assert(static_next_search.size() == decision_level + 1);
     trail_lim.push_back(trail.size());
 
     // Search for next unknown primary input
-    uint32_t pi_index;
-    uint32_t branch_gate;
-    for (pi_index = branch_lim[decision_level];; pi_index++) {
-        if (pi_index >= graph.primary_inputs.size()) {
-            throw overflow_error("Error: there are no more PIs to pick from");
-        }
+    uint32_t pi_index = static_next_search[decision_level];
+    GateID branch_gate;
+    while (pi_index < graph.primary_inputs.size()) {
         string pi_name = graph.primary_inputs[pi_index];
         branch_gate = graph.name_map.at(pi_name);
         if (circuit[branch_gate].output_pin == PinValue::unknown) {
-            break;
+            Propagation branching_assignment(DECISION, branch_gate, 0, outwards, PinValue::one);
+            propagation_queue.push_back(branching_assignment);
+            decision_level++;
+            static_next_search.push_back(pi_index + 1);
+            return true;
         }
+        pi_index++;
     }
-    branch_lim.push_back(pi_index + 1);
 
-    Propagation branching_assignment(DECISION, branch_gate, 0, outwards, PinValue::one);
-    propagation_queue.push_back(branching_assignment);
-    decision_level++;
+    return false;
+}
+
+bool Solver::branchVMTF() {
+    assert(trail_lim.size() == decision_level);
+    trail_lim.push_back(trail.size());
+
+    // Search for next unknown variable
+    GateID branch_gate = VMTF_next_search;
+    while (branch_gate != NO_CONNECT) {
+        if (circuit[branch_gate].output_pin == PinValue::unknown) {
+            Propagation branching_assignment(DECISION, branch_gate, 0, outwards, PinValue::one);
+            propagation_queue.push_back(branching_assignment);
+            decision_level++;
+            VMTF_next_search = VMTF_queue.next(branch_gate);
+            return true;
+        }
+        branch_gate = VMTF_queue.next(branch_gate);
+    }
+    return false;
 }
 
 void Solver::loadSatisfyingAssignment() {

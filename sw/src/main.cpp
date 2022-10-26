@@ -14,6 +14,9 @@ int main(int argc, char* argv[]) {
         exit(EXIT_FAILURE);
     }
 
+    ArrayQueue array_queue(5);
+    array_queue.bump(2);
+
     /* Circuit Encoder Tests
      */
     findWordsInLine(" a[0] a[1] a[2] a[3] a[4] a[5] a[6] a[7] a[8] a[9] a[10] a[11] ");
@@ -53,6 +56,8 @@ int main(int argc, char* argv[]) {
     test_3.solve();
     Solver test_4("/home/erin/Data/Saved/Research/CSAT_solver/benchmarks/test4.eqn", "z");
     test_4.solve();
+    Solver test_5("/home/erin/Data/Saved/Research/CSAT_solver/benchmarks/test5.eqn", "z");
+    test_5.solve();
 
     cout << "\n**************************************************************" << endl;
     cout << "User Input Solve:" << endl;
