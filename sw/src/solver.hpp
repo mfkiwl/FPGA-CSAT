@@ -53,7 +53,9 @@ void debug_PrintCircuit(const vector<Gate>& circuit, const Graph& graph) {
 bool debug_CircuitIsCoherent(const vector<Gate>& circuit, const Graph& graph) {
     for (size_t gate = 0; gate < graph.nodes.size(); gate++) {
         for (auto out_pin : graph.nodes[gate].outputs) {
-            if (circuit[gate].output_pin != circuit[out_pin.gate].input_pins[out_pin.offset]) {
+            if (isUnknown(circuit[gate].output_pin) & isUnknown(circuit[out_pin.gate].input_pins[out_pin.offset])) {
+                continue;
+            } else if (circuit[gate].output_pin != circuit[out_pin.gate].input_pins[out_pin.offset]) {
                 cout << "Coherency check failed!" << endl;
                 return false;
             }
@@ -127,6 +129,7 @@ class Solver {
     unordered_map<string, bool> satisfying_assignment;
     unsigned int conflict_count;
     bool is_sat;
+    unsigned int branch_mode;
 
    private:
     struct ConflictWire {
@@ -142,6 +145,7 @@ class Solver {
     void reconsider(uint32_t& backjump_level, uint32_t& UIP_step);
     bool branchStatic();
     bool branchVMTF();
+    PinValue pickBranchPolarity(GateID branch_gate);
     void loadSatisfyingAssignment();
 
     const uint32_t UNASSIGNED = uint32_t(-1);
@@ -175,6 +179,7 @@ void Solver::solve() {
     const size_t num_gates = nodes.size();
 
     // Copy TT encoding from graph to ephemeral circuit for localized processing (relevant for FPGA)
+    circuit.clear();
     circuit.resize(num_gates);
     for (size_t i = 0; i < num_gates; i++) {
         circuit[i].truth_table = nodes[i].truth_table;
@@ -187,6 +192,8 @@ void Solver::solve() {
     VMTF_queue = ArrayQueue(num_gates);
     VMTF_next_search = VMTF_queue.m_head;
 
+    trail.clear();
+    trail_lim.clear();
     level_assigned = vector<uint32_t>(num_gates, UNASSIGNED);
     antecedent = vector<OutPin>(num_gates);
     propagation_queue.push_back(Propagation(DECISION, graph.name_map.at(output_to_satify), 0, outwards, PinValue::one));
@@ -220,7 +227,7 @@ void Solver::solve() {
             if (!branchVMTF()) {
                 for (auto pi_name : graph.primary_inputs) {
                     GateID branch_gate = graph.name_map.at(pi_name);
-                    assert(circuit[branch_gate].output_pin != PinValue::unknown);
+                    assert(isKnown(circuit[branch_gate].output_pin));
                 }
                 /* SAT */
                 cout << "SAT" << endl;
@@ -276,14 +283,14 @@ void Solver::propagate(bool& conflict_occurred, ConflictWire& conflict_wire) {
 
         // IMPLY (this can happen in parallel after ASSIGN as pin implications are independent)
         // Conflicts will never result from implication (see proof), so it is only needed on unknown pins
-        if (new_gate_state.output_pin == PinValue::unknown) {
+        if (isUnknown(new_gate_state.output_pin)) {
             new_gate_state.output_pin = calculateOutputImplication(new_gate_state);
         }
         for (uint8_t i = 0; i < LUT_SIZE; i++) {
             if (nodes[g].inputs[i] == NO_CONNECT) {
                 break;
             }
-            if (new_gate_state.input_pins[i] == PinValue::unknown) {
+            if (isUnknown(new_gate_state.input_pins[i])) {
                 new_gate_state.input_pins[i] = calculateInputImplication(new_gate_state, i);
             }
         }
@@ -350,7 +357,7 @@ void Solver::conflictAnalysis(const ConflictWire& conflict_wire, uint32_t& backj
         pins_stamped--;
     };
 
-    cout << "\nConflict Analysis: d = " << decision_level << endl;
+    // cout << "\nConflict Analysis: d = " << decision_level << endl;
 
     stamp(conflict_wire.source_gate, LUT_SIZE);
     stamp(conflict_wire.sink_gate, conflict_wire.sink_offset);
@@ -420,17 +427,17 @@ void Solver::conflictAnalysis(const ConflictWire& conflict_wire, uint32_t& backj
     VMTF_next_search = VMTF_queue.m_head;
     static_next_search.erase(static_next_search.begin() + backjump_level + 1, static_next_search.end());
 
-    cout << "\tbackjump_level = " << backjump_level << endl;
+    // cout << "\tbackjump_level = " << backjump_level << endl;
 }
 
 void Solver::cancelUntil(uint32_t& backjump_level) {
     for (uint32_t t = trail.size() - 1; t >= trail_lim[backjump_level]; t--) {
         PinAssignment& pa = trail[t];
         if (pa.direction == Direction::outwards) {
-            circuit[pa.to].output_pin = PinValue::unknown;
+            circuit[pa.to].output_pin = savePhase(circuit[pa.to].output_pin);
             level_assigned[pa.to] = UNASSIGNED;
         } else {
-            circuit[pa.to].input_pins[pa.to_offset] = PinValue::unknown;
+            circuit[pa.to].input_pins[pa.to_offset] = savePhase(circuit[pa.to].input_pins[pa.to_offset]);
         }
     }
 }
@@ -441,9 +448,19 @@ void Solver::reconsider(uint32_t& backjump_level, uint32_t& UIP_step) {
     trail.erase(trail.begin() + trail_lim[backjump_level], trail.end());
     trail_lim.erase(trail_lim.begin() + backjump_level, trail_lim.end());
     decision_level = backjump_level;
-    cout << "Reconsider: " << assignment.to << " = " << assignment.value << endl;
+    // cout << "Reconsider: " << assignment.to << " = " << assignment.value << endl;
     Propagation branching_assignment(LEARNED, assignment.to, 0, outwards, assignment.value);
     propagation_queue.push_back(branching_assignment);
+}
+
+PinValue Solver::pickBranchPolarity(GateID branch_gate) {
+    if (branch_mode == 0) {
+        return PinValue::zero;
+    } else if (branch_mode == 1) {
+        return PinValue::one;
+    } else {
+        return restorePhase(circuit[branch_gate].output_pin);
+    }
 }
 
 bool Solver::branchStatic() {
@@ -457,8 +474,8 @@ bool Solver::branchStatic() {
     while (pi_index < graph.primary_inputs.size()) {
         string pi_name = graph.primary_inputs[pi_index];
         branch_gate = graph.name_map.at(pi_name);
-        if (circuit[branch_gate].output_pin == PinValue::unknown) {
-            Propagation branching_assignment(DECISION, branch_gate, 0, outwards, PinValue::one);
+        if (isUnknown(circuit[branch_gate].output_pin)) {
+            Propagation branching_assignment(DECISION, branch_gate, 0, outwards, pickBranchPolarity(branch_gate));
             propagation_queue.push_back(branching_assignment);
             decision_level++;
             static_next_search.push_back(pi_index + 1);
@@ -477,8 +494,8 @@ bool Solver::branchVMTF() {
     // Search for next unknown variable
     GateID branch_gate = VMTF_next_search;
     while (branch_gate != NO_CONNECT) {
-        if (circuit[branch_gate].output_pin == PinValue::unknown) {
-            Propagation branching_assignment(DECISION, branch_gate, 0, outwards, PinValue::one);
+        if (isUnknown(circuit[branch_gate].output_pin)) {
+            Propagation branching_assignment(DECISION, branch_gate, 0, outwards, pickBranchPolarity(branch_gate));
             propagation_queue.push_back(branching_assignment);
             decision_level++;
             VMTF_next_search = VMTF_queue.next(branch_gate);

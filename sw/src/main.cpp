@@ -27,15 +27,15 @@ int main(int argc, char* argv[]) {
      */
     Gate gate;
     gate.truth_table = kitty::nth_var<TruthTable>(LUT_SIZE, 0) | kitty::nth_var<TruthTable>(LUT_SIZE, 1);
-    gate.input_pins.fill(PinValue::unknown);
-    gate.output_pin = PinValue::unknown;
-    assert(calculateOutputImplication(gate) == PinValue::unknown);
+    gate.input_pins.fill(PinValue::unknown_ps0);
+    gate.output_pin = PinValue::unknown_ps0;
+    assert(isUnknown(calculateOutputImplication(gate)));
 
     gate.input_pins[0] = PinValue::one;
     assert(calculateOutputImplication(gate) == PinValue::one);
     // cout << "This should fail" << endl; assert(calculateOutputImplication(gate) == zero);
 
-    gate.input_pins.fill(PinValue::unknown);
+    gate.input_pins.fill(PinValue::unknown_ps0);
     gate.output_pin = PinValue::zero;
     assert(calculateInputImplication(gate, 0) == PinValue::zero);
 
@@ -63,11 +63,21 @@ int main(int argc, char* argv[]) {
     cout << "User Input Solve:" << endl;
 
     Solver S(file_path, output_to_satify);
-    S.solve();
     cout << S.graph.primary_inputs.size() << " primary inputs read." << endl;
     cout << S.graph.primary_outputs.size() << " primary outputs read." << endl;
 
-    cout << S.conflict_count << " conflicts occurred." << endl;
+    S.branch_mode = 0;
+    S.solve();
+    cout << "branch assignment = " << S.branch_mode << ": " << S.conflict_count << " conflicts occurred." << endl;
+
+    S.branch_mode = 1;
+    S.solve();
+    cout << "branch assignment = " << S.branch_mode << ": " << S.conflict_count << " conflicts occurred." << endl;
+
+    S.branch_mode = 2;
+    S.solve();
+    cout << "branch assignment = restorePhase(): " << S.conflict_count << " conflicts occurred." << endl;
+
     S.writeTestbench();
     S.writeTCL();
 }

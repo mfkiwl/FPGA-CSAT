@@ -7,10 +7,40 @@
 
 using namespace std;
 
-enum struct PinValue { zero = 0b00,
-                       one = 0b01,
-                       dontcare = 0b10,
-                       unknown = 0b11 };
+enum struct PinValue { unknown_ps0 = 0b00,
+                       unknown_ps1 = 0b01,
+                       zero = 0b10,
+                       one = 0b11
+};
+
+bool isUnknown(const PinValue& pv) {
+    if (pv == PinValue::unknown_ps0 || pv == PinValue::unknown_ps1) {
+        return true;
+    }
+    return false;
+}
+
+bool isKnown(const PinValue& pv) {
+    return !isUnknown(pv);
+}
+
+PinValue savePhase(const PinValue& pv) {
+    if (pv == PinValue::zero) {
+        return PinValue::unknown_ps0;
+    } else if (pv == PinValue::one) {
+        return PinValue::unknown_ps1;
+    }
+    return PinValue::unknown_ps1;
+}
+
+PinValue restorePhase(const PinValue& pv) {
+    if (pv == PinValue::unknown_ps0) {
+        return PinValue::zero;
+    } else if (pv == PinValue::unknown_ps1) {
+        return PinValue::one;
+    }
+    assert(false);
+}
 
 ostream& operator<<(ostream& os, const PinValue& pv) {
     switch (pv) {
@@ -20,10 +50,10 @@ ostream& operator<<(ostream& os, const PinValue& pv) {
         case PinValue::one:
             os << "one";
             break;
-        case PinValue::dontcare:
-            os << "dontcare";
+        case PinValue::unknown_ps0:
+            os << "unknown";
             break;
-        case PinValue::unknown:
+        case PinValue::unknown_ps1:
             os << "unknown";
             break;
     }
@@ -33,8 +63,8 @@ ostream& operator<<(ostream& os, const PinValue& pv) {
 /*! Struct containing the ephemeral pin values used during solve
  */
 struct Gate {
-    Gate() : output_pin(PinValue::unknown) {
-        input_pins.fill(PinValue::unknown);
+    Gate() : output_pin(PinValue::unknown_ps1) {
+        input_pins.fill(PinValue::unknown_ps1);
     }
     array<PinValue, LUT_SIZE> input_pins;
     PinValue output_pin;
@@ -98,7 +128,7 @@ PinValue calculateInputImplication(const Gate& gate, size_t input_index) {
     } else if (kitty::is_const0(mask & mask_tables[input_index][0])) {
         return PinValue::one;
     } else {
-        return PinValue::unknown;
+        return gate.input_pins[input_index];
     }
 }
 
@@ -118,6 +148,6 @@ PinValue calculateOutputImplication(const Gate& gate) {
     } else if (kitty::is_const0(mask & ~gate.truth_table)) {
         return PinValue::one;
     } else {
-        return PinValue::unknown;
+        return gate.output_pin;
     }
 }
