@@ -85,20 +85,24 @@ struct Signal {
     vector<string> outputs;
 };
 
+typedef uint32_t GateID;
+
 struct OutPin {
-    uint32_t gate;
+    GateID gate;
     uint8_t offset;
 };
 
-typedef uint32_t InPin;
-const InPin NO_CONNECT = InPin(-1);
+const GateID NO_CONNECT = GateID(-1);
+const GateID DECISION = GateID(-2);
+const GateID SELF = GateID(-3);
+const GateID LEARNED = GateID(-4); // placeholder
 
 /*! Struct containing all the necesary information to form the circuit graph
  */
 struct GateNode {
     bool is_PI;
     vector<OutPin> outputs;
-    array<InPin, LUT_SIZE> inputs;
+    array<GateID, LUT_SIZE> inputs;
     kitty::static_truth_table<LUT_SIZE> truth_table;
     void print() {
         cout << "{ is_PI = " << is_PI << ", outputs = { ";
@@ -119,8 +123,8 @@ struct Graph {
     vector<GateNode> nodes;
     vector<string> primary_inputs;
     vector<string> primary_outputs;
-    unordered_map<string, uint32_t> name_map;
-    unordered_map<uint32_t, string> gate_map;
+    unordered_map<string, GateID> name_map;
+    unordered_map<GateID, string> gate_map;
 };
 
 void parseEQN(string eqn_file_path, Graph& graph) {
@@ -155,7 +159,6 @@ void parseEQN(string eqn_file_path, Graph& graph) {
             continue;
         } else if (stringStartsWith(line, "INORDER")) {
             parseSignals(line, infile, primary_inputs);
-            cout << primary_inputs.size() << " primary inputs read." << endl;
             for (const string& name : primary_inputs) {
                 Signal s = {name, true};
                 carefulSignalInsert(signals, {name, s});
@@ -165,7 +168,6 @@ void parseEQN(string eqn_file_path, Graph& graph) {
         } else if (stringStartsWith(line, "OUTORDER")) {
             // Signal creation is deferred until the definition is encountered
             parseSignals(line, infile, primary_outputs);
-            cout << primary_outputs.size() << " primary outputs read." << endl;
         } else {
             string name, formula;
             vector<string> inputs;
@@ -207,10 +209,10 @@ void parseEQN(string eqn_file_path, Graph& graph) {
         // Create backwards and forwards edges from signal inputs
         for (uint8_t offset = 0; offset < signal.inputs.size(); offset++) {
             OutPin pin = {gate, offset};
-            uint32_t predecessor = name_map.at(signal.inputs[offset]);
+            GateID predecessor = name_map.at(signal.inputs[offset]);
 
             graph.nodes[predecessor].outputs.push_back(pin);
-            graph.nodes[gate].inputs[offset] = static_cast<InPin>(predecessor);
+            graph.nodes[gate].inputs[offset] = (predecessor);
         }
 
         // Specify unused inputs as no-connect
@@ -219,4 +221,4 @@ void parseEQN(string eqn_file_path, Graph& graph) {
         }
     }
 }
-}
+}  // namespace encoder

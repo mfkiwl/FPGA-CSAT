@@ -72,7 +72,7 @@ void writeTestbench(const string& path, const string& module_name, const vector<
     tb_out << "endmodule\n";
 }
 
-void writeTCL(const string& path, const string& module_name) {
+void writeTCL(const string& path, const string& benchmark_dir, const string& module_name) {
     ofstream tcl_out(path);
     if (!tcl_out.good()) {
         cout << "Opening " << path << " failed" << endl;
@@ -81,7 +81,7 @@ void writeTCL(const string& path, const string& module_name) {
 
     tcl_out << "# Create project and launch simulation\n";
     tcl_out << "create_project tb_simulation_project ./tb_simulation_project -force\n";
-    tcl_out << "add_files -norecurse { ../benchmarks/" << module_name << ".v tb.v}\n";
+    tcl_out << "add_files -norecurse { "<< benchmark_dir << module_name << ".v tb.v}\n";
     tcl_out << "update_compile_order -fileset sources_1\n";
     tcl_out << "set_property top tb [get_filesets sim_1]\n";
     tcl_out << "launch_simulation\n\n";
@@ -90,4 +90,4 @@ void writeTCL(const string& path, const string& module_name) {
     tcl_out << "# Exit TCL script with the error code\n";
     tcl_out << "exit $simError\n";
 }
-}
+}  // namespace verify
