@@ -1,4 +1,5 @@
 #pragma once
+#include "shared_parameters.hpp"
 
 static constexpr unsigned int floorlog2(unsigned int x) {
     return x == 1 ? 0 : 1 + floorlog2(x >> 1);

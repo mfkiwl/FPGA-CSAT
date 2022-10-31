@@ -245,7 +245,6 @@ void solve(const GateNode nodes[MAX_GATES], const TruthTable truth_tables[MAX_GA
         Propagate(nodes, decision_level, truth_tables, propagation_queue, pq_end, circuit, trail, trail_end, level_assigned, antecedent, conflict_occurred, conflict);
         if (conflict_occurred) {
             if (decision_level == 0) {
-                cout << "UNSAT" << endl;
                 is_sat = false;
                 return;
             }
@@ -261,7 +260,6 @@ void solve(const GateNode nodes[MAX_GATES], const TruthTable truth_tables[MAX_GA
             trail_lim[decision_level] = trail_end;
             Propagation branching_prop;
             if (!PickBranching(VMTF_queue, VMTF_next_search, level_assigned, branching_prop)) {
-                cout << "SAT" << endl;
                 is_sat = true;
                 return;
             }

@@ -1,9 +1,9 @@
 #pragma once
 
 #include "ap_int.h"
-#include "circuit_encoder.hpp"
 #include "parameters.hpp"
 #include "shared_parameters.hpp"
+#include "shared_structs.hpp"
 
 typedef ap_uint<TRUTH_TABLE_BITS> TruthTable;
 typedef ap_uint<GATE_ID_BITS> GateID;
@@ -14,16 +14,16 @@ typedef ap_uint<1> Direction;
 const Direction OUTWARDS = 0b0;
 const Direction INWARDS = 0b1;
 
-const GateID NO_CONNECT = GateID(encoder::NO_CONNECT);
-const GateID DECISION = GateID(encoder::DECISION);
-const GateID SELF = GateID(encoder::SELF);
-const GateID LEARNED = GateID(encoder::LEARNED);  // placeholder
+const GateID NO_CONNECT = GateID(sw::NO_CONNECT);
+const GateID DECISION = GateID(sw::DECISION);
+const GateID SELF = GateID(sw::SELF);
+const GateID LEARNED = GateID(sw::LEARNED);  // placeholder
 
 const uint32_t UNASSIGNED = -1;
 
 struct GateNode {
     GateNode() {}
-    GateNode(encoder::GateNode gn) {
+    GateNode(sw::GateNode gn) {
         for (size_t i = 0; i < LUT_SIZE; i++) {
             inputs[i] = gn.inputs[i];
         }
@@ -32,11 +32,11 @@ struct GateNode {
             outputs[i] = gn.outputs[i];
         }
         for (; i < MAX_FANOUT; i++) {
-            outputs[i].gate = encoder::NO_CONNECT;
+            outputs[i].gate = sw::NO_CONNECT;
         }
     }
     uint32_t inputs[LUT_SIZE];
-    encoder::OutPin outputs[MAX_FANOUT];
+    sw::OutPin outputs[MAX_FANOUT];
 };
 
 struct Gate : ap_uint<2 * (LUT_SIZE + 1)> {
@@ -74,7 +74,7 @@ struct Propagation {
 };
 
 struct PinAssignment {
-    PinAssignment(){}
+    PinAssignment() {}
     PinAssignment(GateID to, PinValue val) : to_gate(to), direction(OUTWARDS), value(val) {}
     PinAssignment(GateID to, Offset offset, PinValue val) : to_gate(to), to_offset(offset), direction(INWARDS), value(val) {}
     Direction direction;

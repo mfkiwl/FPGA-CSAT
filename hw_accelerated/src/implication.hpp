@@ -19,28 +19,34 @@ PinValue invert(const PinValue& x) {
 
 /* Generates all nth varariable truth tables, as well as their inverse
  * for example (with N 3) mask_tables =
- *   01010101 10101010
- *   00110011 11001100
- *   00001111 11110000
+ *   10101010 01010101
+ *   11001100 00110011
+ *   11110000 00001111
  */
 template <unsigned int N>
 struct Masks {
+    constexpr static uint32_t num_bits = 1 << N;
     constexpr Masks() : mask_tables() {
         for (unsigned int i = 0; i < N; i++) {
-            ap_uint<N> count = 0;
-            do {
-                for (size_t index; index < N; index++) {
-                    mask_tables[index][0][count] = ~count[count];
-                    mask_tables[index][1][count] = count[count];
+            uint32_t half_period = 1 << i;
+            uint32_t period = 2 * half_period;
+            uint32_t blocks = num_bits / period;
+
+            for (unsigned int b = 0; b < blocks; b++) {
+                for (unsigned int j = 0; j < half_period; j++) {
+                    mask_tables[i][0][b * period + j] = 0;
                 }
-                count++;
-            } while (count > 0);
+                for (unsigned int j = 0; j < half_period; j++) {
+                    mask_tables[i][0][b * period + half_period + j] = 1;
+                }
+            }
+            mask_tables[i][1] = ~mask_tables[i][0];
         }
     }
-    mask_tables[N][2];
+    ap_uint<num_bits> mask_tables[N][2];
 };
 
-constexpr static Masks MASKS;
+const static Masks<LUT_SIZE> MASKS;
 
 Gate imply(Gate pins, const TruthTable& tt) {
     Gate implied_pins;

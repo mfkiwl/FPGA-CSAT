@@ -75,7 +75,7 @@ void Solver::solve() {
     // Initialize Arrays
     for (unsigned int i = 0; i < graph.nodes.size(); i++) {
         nodes[i] = GateNode(graph.nodes[i]);
-        truth_tables[i] = TruthTable(to_hex(graph.nodes[i].truth_table).c_str());
+        truth_tables[i] = TruthTable(to_hex(graph.truth_tables[i]).c_str());
     }
 
     // Copy input data to device global memory

@@ -12,6 +12,7 @@
 
 #include "kitty/include/kitty/kitty.hpp"
 #include "shared_parameters.hpp"
+#include "shared_structs.hpp"
 
 using namespace std;
 
@@ -85,46 +86,13 @@ struct Signal {
     vector<string> outputs;
 };
 
-typedef uint32_t GateID;
-
-struct OutPin {
-    GateID gate;
-    uint8_t offset;
-};
-
-const GateID NO_CONNECT = GateID(-1);
-const GateID DECISION = GateID(-2);
-const GateID SELF = GateID(-3);
-const GateID LEARNED = GateID(-4); // placeholder
-
-/*! Struct containing all the necesary information to form the circuit graph
- */
-struct GateNode {
-    bool is_PI;
-    vector<OutPin> outputs;
-    array<GateID, LUT_SIZE> inputs;
-    kitty::static_truth_table<LUT_SIZE> truth_table;
-    void print() {
-        cout << "{ is_PI = " << is_PI << ", outputs = { ";
-        for (const auto& output : outputs) {
-            cout << output.gate << "|" << unsigned(output.offset) << " ";
-        }
-        cout << "}, inputs = { ";
-        for (const auto& input : inputs) {
-            cout << static_cast<uint32_t>(input) << " ";
-        }
-        cout << "}, tt = ";
-        kitty::print_binary(truth_table);
-        cout << " }";
-    }
-};
-
 struct Graph {
-    vector<GateNode> nodes;
+    vector<sw::GateNode> nodes;
+    vector<TruthTable> truth_tables;
     vector<string> primary_inputs;
     vector<string> primary_outputs;
-    unordered_map<string, GateID> name_map;
-    unordered_map<GateID, string> gate_map;
+    unordered_map<string, sw::GateID> name_map;
+    unordered_map<sw::GateID, string> gate_map;
 };
 
 void parseEQN(string eqn_file_path, Graph& graph) {
@@ -137,7 +105,7 @@ void parseEQN(string eqn_file_path, Graph& graph) {
     string line;
     vector<string> primary_inputs;
     vector<string> primary_outputs;
-    unordered_map<string, uint32_t> name_map;
+    unordered_map<string, sw::GateID> name_map;
     unordered_map<string, Signal> signals;
     uint32_t priority = 0;
 
@@ -181,6 +149,7 @@ void parseEQN(string eqn_file_path, Graph& graph) {
 
     // Convert signals to gate nodes
     graph.nodes.resize(signals.size());
+    graph.truth_tables.resize(signals.size());
     graph.primary_inputs = primary_inputs;
     graph.primary_outputs = primary_outputs;
     graph.name_map = name_map;
@@ -195,21 +164,21 @@ void parseEQN(string eqn_file_path, Graph& graph) {
 
         if (signal.is_PI) {
             // PI truth table is a pass-through of variable 0
-            graph.nodes[gate].truth_table = kitty::nth_var<TruthTable>(LUT_SIZE, 0);
+            graph.truth_tables[gate] = kitty::nth_var<TruthTable>(LUT_SIZE, 0);
             // All inputs are no-connect
-            graph.nodes[gate].inputs.fill(NO_CONNECT);
+            graph.nodes[gate].inputs.fill(sw::NO_CONNECT);
             continue;
         }
 
         // Create truth table from boolean formula
-        kitty::static_truth_table<LUT_SIZE> tt;
+        TruthTable tt;
         kitty::create_from_formula(tt, signal.formula, signal.inputs);
-        graph.nodes[gate].truth_table = tt;
+        graph.truth_tables[gate] = tt;
 
         // Create backwards and forwards edges from signal inputs
         for (uint8_t offset = 0; offset < signal.inputs.size(); offset++) {
-            OutPin pin = {gate, offset};
-            GateID predecessor = name_map.at(signal.inputs[offset]);
+            sw::OutPin pin = {gate, offset};
+            sw::GateID predecessor = name_map.at(signal.inputs[offset]);
 
             graph.nodes[predecessor].outputs.push_back(pin);
             graph.nodes[gate].inputs[offset] = (predecessor);
@@ -217,7 +186,7 @@ void parseEQN(string eqn_file_path, Graph& graph) {
 
         // Specify unused inputs as no-connect
         for (uint8_t offset = signal.inputs.size(); offset < LUT_SIZE; offset++) {
-            graph.nodes[gate].inputs[offset] = NO_CONNECT;
+            graph.nodes[gate].inputs[offset] = sw::NO_CONNECT;
         }
     }
 }
