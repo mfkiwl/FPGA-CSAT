@@ -62,7 +62,7 @@ $(BUILD_DIR)/$(KERNEL).xclbin: $(TEMP_DIR)/$(KERNEL).xo
 
 ############################## Setting Rules for Host (Building Host Executable) ##############################
 $(EXECUTABLE): $(HOST_SRCS) | check-xrt
-		g++ -o $@ $^ $(CXXFLAGS) $(LDFLAGS)
+	g++ -o $@ $^ $(CXXFLAGS) $(LDFLAGS)
 
 emconfig:$(EMCONFIG_DIR)/emconfig.json
 $(EMCONFIG_DIR)/emconfig.json:

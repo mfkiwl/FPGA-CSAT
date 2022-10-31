@@ -1,15 +1,17 @@
 #pragma once
 
+#include <array>
 #include <string>
 
 #include "circuit_encoder.hpp"
+#include "hardware_structs.hpp"
 #include "verify.hpp"
 #include "xcl2.hpp"
 
 using namespace std;
 
 class Solver {
-    public:
+   public:
     Solver(string eqn_file_path, string gate_to_satisfy, string binary_file) : eqn_file_path(eqn_file_path), gate_to_satisfy(gate_to_satisfy), binary_file(binary_file) {}
     void solve();
 
@@ -49,23 +51,42 @@ void Solver::solve() {
         exit(EXIT_FAILURE);
     }
 
-    // Allocate Buffer in Global Memory
-    OCL_CHECK(err, cl::Buffer buffer_in1(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, vector_size_bytes, source_in1.data(), &err));
-    OCL_CHECK(err, cl::Buffer buffer_in2(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, vector_size_bytes, source_in2.data(), &err));
-    OCL_CHECK(err, cl::Buffer buffer_output(context, CL_MEM_USE_HOST_PTR | CL_MEM_WRITE_ONLY, vector_size_bytes, source_hw_results.data(), &err));
+    encoder::Graph graph;
+    parseEQN(eqn_file_path, graph);
 
-    OCL_CHECK(err, err = csat_kernel.setArg(0, buffer_in1));
-    OCL_CHECK(err, err = csat_kernel.setArg(1, buffer_in2));
-    OCL_CHECK(err, err = csat_kernel.setArg(2, buffer_output));
-    OCL_CHECK(err, err = csat_kernel.setArg(3, size));
+    array<GateNode, MAX_GATES> nodes;
+    array<TruthTable, MAX_GATES> truth_tables;
+    array<PinAssignment, MAX_PINS> trail;
+    bool is_sat;
+
+    // Allocate Buffer in Global Memory
+    OCL_CHECK(err, cl::Buffer nodes_buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(GateNode) * nodes.size(), nodes.data(), &err));
+    OCL_CHECK(err, cl::Buffer truth_tables_buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(TruthTable) * truth_tables.size(), truth_tables.data(), &err));
+    OCL_CHECK(err, cl::Buffer trail_buffer(context, CL_MEM_USE_HOST_PTR, sizeof(PinAssignment) * trail.size(), trail.data(), &err));
+    OCL_CHECK(err, cl::Buffer is_sat_buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_WRITE_ONLY, sizeof(is_sat), &is_sat, &err));
+
+    OCL_CHECK(err, err = csat_kernel.setArg(0, nodes_buffer));
+    OCL_CHECK(err, err = csat_kernel.setArg(1, truth_tables_buffer));
+    OCL_CHECK(err, err = csat_kernel.setArg(2, graph.nodes.size()));
+    OCL_CHECK(err, err = csat_kernel.setArg(3, graph.name_map.at(gate_to_satisfy)));
+    OCL_CHECK(err, err = csat_kernel.setArg(4, trail_buffer));
+    OCL_CHECK(err, err = csat_kernel.setArg(5, is_sat_buffer));
+
+    // Initialize Arrays
+    for (unsigned int i = 0; i < graph.nodes.size(); i++) {
+        nodes[i] = GateNode(graph.nodes[i]);
+        truth_tables[i] = TruthTable(to_hex(graph.nodes[i].truth_table).c_str());
+    }
 
     // Copy input data to device global memory
-    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in1, buffer_in2}, 0 /* 0 means from host*/));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({nodes_buffer, truth_tables_buffer}, 0 /* 0 means from host*/));
 
     // Launch the Kernel
     OCL_CHECK(err, err = q.enqueueTask(csat_kernel));
 
     // Copy Result from Device Global Memory to Host Local Memory
-    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output}, CL_MIGRATE_MEM_OBJECT_HOST));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({trail_buffer, is_sat_buffer}, CL_MIGRATE_MEM_OBJECT_HOST));
     q.finish();
+
+    // Extract PI assignments from trail
 }

@@ -15,14 +15,14 @@ const Direction OUTWARDS = 0b0;
 const Direction INWARDS = 0b1;
 
 const GateID NO_CONNECT = GateID(encoder::NO_CONNECT);
-const GateID DECISION = GateID(-2);
-const GateID LEARNED = GateID(-3);  // placeholder
+const GateID DECISION = GateID(encoder::DECISION);
+const GateID SELF = GateID(encoder::SELF);
+const GateID LEARNED = GateID(encoder::LEARNED);  // placeholder
 
 const uint32_t UNASSIGNED = -1;
 
-using encoder::OutPin;
-
 struct GateNode {
+    GateNode() {}
     GateNode(encoder::GateNode gn) {
         for (size_t i = 0; i < LUT_SIZE; i++) {
             inputs[i] = gn.inputs[i];
@@ -36,10 +36,10 @@ struct GateNode {
         }
     }
     uint32_t inputs[LUT_SIZE];
-    OutPin outputs[MAX_FANOUT];
+    encoder::OutPin outputs[MAX_FANOUT];
 };
 
-struct GateState : ap_uint<2 * (LUT_SIZE + 1)> {
+struct Gate : ap_uint<2 * (LUT_SIZE + 1)> {
     using ap_uint<2 * (LUT_SIZE + 1)>::ap_uint;
     ap_range_ref<width, false> input(Offset i) {
         return this->range(2 * i - 1, 0);
@@ -49,9 +49,18 @@ struct GateState : ap_uint<2 * (LUT_SIZE + 1)> {
     }
 };
 
-struct Gate {
-    GateState pins;
-    TruthTable truth_table;
+struct Pin {
+    bool isDECISION() {
+        return gate == DECISION;
+    }
+    bool isSELF() {
+        return gate == SELF;
+    }
+    bool isLEARNED() {
+        return gate == LEARNED;
+    }
+    GateID gate;
+    Offset offset;
 };
 
 struct Propagation {
@@ -65,6 +74,7 @@ struct Propagation {
 };
 
 struct PinAssignment {
+    PinAssignment(){}
     PinAssignment(GateID to, PinValue val) : to_gate(to), direction(OUTWARDS), value(val) {}
     PinAssignment(GateID to, Offset offset, PinValue val) : to_gate(to), to_offset(offset), direction(INWARDS), value(val) {}
     Direction direction;
@@ -74,20 +84,20 @@ struct PinAssignment {
 };
 
 struct Conflict {
-    GateID source;
-    GateID sink;
+    GateID source_gate;
+    GateID sink_gate;
     Offset sink_offset;
 };
 
 struct ArrayQueue {
-    ArrayQueue() {
+    ArrayQueue(const uint32_t& num_gates) {
         head = 0;
         array[0].backward = NO_CONNECT;
-        for (unsigned int i = 0; i < MAX_GATES - 1; i++) {
+        for (unsigned int i = 0; i < num_gates - 1; i++) {
             array[i].forward = i + 1;
             array[i + 1].backward = i;
         }
-        array[MAX_GATES - 1].forward = NO_CONNECT;
+        array[num_gates - 1].forward = NO_CONNECT;
     };
     void bump(GateID g) {
         if (g != head) {
@@ -104,7 +114,7 @@ struct ArrayQueue {
         }
     };
     struct Entry {
-        Entry() : forward(NO_CONNECT), backward(NO_CONNECT){};
+        // Entry() : forward(NO_CONNECT), backward(NO_CONNECT){};
         GateID forward;
         GateID backward;
     };

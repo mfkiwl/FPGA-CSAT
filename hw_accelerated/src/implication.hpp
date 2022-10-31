@@ -42,8 +42,8 @@ struct Masks {
 
 constexpr static Masks MASKS;
 
-GateState imply(GateState pins, const TruthTable& tt) {
-    GateState implied_pins;
+Gate imply(Gate pins, const TruthTable& tt) {
+    Gate implied_pins;
     TruthTable mask = -1;  // all 1s
 
     // Mask out rows of the TT
