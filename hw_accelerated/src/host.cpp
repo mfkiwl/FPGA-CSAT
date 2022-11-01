@@ -6,15 +6,15 @@ using namespace std;
 
 int main(int argc, char** argv) {
     if (argc != 4) {
-        cout << "Usage: " << argv[0] << " <XCLBIN File>" << endl;
+        cout << "Usage: " << argv[0] << " <XCLBIN File> <.eqn file path> <output to satisfy>" << endl;
         return EXIT_FAILURE;
     }
 
-    string eqn_file_path = argv[1];
-    string gate_to_satisfy = argv[2];
-    string binary_file = argv[3];
+    string kernel_bin = argv[1];
+    string eqn_file_path = argv[2];
+    string gate_to_satisfy = argv[3];
 
-    Solver S(eqn_file_path, gate_to_satisfy, binary_file);
+    Solver S(eqn_file_path, gate_to_satisfy, kernel_bin);
     S.solve();
 
     return EXIT_SUCCESS;

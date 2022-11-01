@@ -66,10 +66,10 @@ struct Pin {
 struct Propagation {
     Propagation() {}
     Propagation(GateID from, GateID to, Offset offset, Direction d, PinValue val) : from_gate(from), to_gate(to), sink_offset(offset), direction(d), value(val) {}
-    Direction direction;
     GateID from_gate;
     GateID to_gate;
     Offset sink_offset;
+    Direction direction;
     PinValue value;
 };
 
@@ -77,9 +77,9 @@ struct PinAssignment {
     PinAssignment() {}
     PinAssignment(GateID to, PinValue val) : to_gate(to), direction(OUTWARDS), value(val) {}
     PinAssignment(GateID to, Offset offset, PinValue val) : to_gate(to), to_offset(offset), direction(INWARDS), value(val) {}
-    Direction direction;
     GateID to_gate;
     Offset to_offset;
+    Direction direction;
     PinValue value;
 };
 

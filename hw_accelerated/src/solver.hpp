@@ -23,7 +23,7 @@ class Solver {
 void Solver::solve() {
     cl_int err;
     cl::Context context;
-    cl::Kernel csat_kernel;
+    cl::Kernel solve_kernel;
     cl::CommandQueue q;
 
     auto devices = xcl::get_xil_devices();
@@ -41,7 +41,7 @@ void Solver::solve() {
             std::cout << "Failed to program device[" << i << "] with xclbin file!\n";
         } else {
             std::cout << "Device[" << i << "]: program successful!\n";
-            OCL_CHECK(err, csat_kernel = cl::Kernel(program, "vadd", &err));
+            OCL_CHECK(err, solve_kernel = cl::Kernel(program, "solve", &err));
             valid_device = true;
             break;  // we break because we found a valid device
         }
@@ -65,24 +65,24 @@ void Solver::solve() {
     OCL_CHECK(err, cl::Buffer trail_buffer(context, CL_MEM_USE_HOST_PTR, sizeof(PinAssignment) * trail.size(), trail.data(), &err));
     OCL_CHECK(err, cl::Buffer is_sat_buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_WRITE_ONLY, sizeof(is_sat), &is_sat, &err));
 
-    OCL_CHECK(err, err = csat_kernel.setArg(0, nodes_buffer));
-    OCL_CHECK(err, err = csat_kernel.setArg(1, truth_tables_buffer));
-    OCL_CHECK(err, err = csat_kernel.setArg(2, graph.nodes.size()));
-    OCL_CHECK(err, err = csat_kernel.setArg(3, graph.name_map.at(gate_to_satisfy)));
-    OCL_CHECK(err, err = csat_kernel.setArg(4, trail_buffer));
-    OCL_CHECK(err, err = csat_kernel.setArg(5, is_sat_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(0, nodes_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(1, truth_tables_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(2, uint32_t(graph.nodes.size())));
+    OCL_CHECK(err, err = solve_kernel.setArg(3, graph.name_map.at(gate_to_satisfy)));
+    OCL_CHECK(err, err = solve_kernel.setArg(4, trail_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(5, is_sat_buffer));
 
     // Initialize Arrays
     for (unsigned int i = 0; i < graph.nodes.size(); i++) {
         nodes[i] = GateNode(graph.nodes[i]);
-        truth_tables[i] = TruthTable(to_hex(graph.truth_tables[i]).c_str());
+        truth_tables[i] = TruthTable(to_hex(graph.truth_tables[i]).c_str(), 16);
     }
 
     // Copy input data to device global memory
-    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({nodes_buffer, truth_tables_buffer}, 0 /* 0 means from host*/));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({nodes_buffer, truth_tables_buffer, trail_buffer, is_sat_buffer}, 0 /* 0 means from host*/));
 
     // Launch the Kernel
-    OCL_CHECK(err, err = q.enqueueTask(csat_kernel));
+    OCL_CHECK(err, err = q.enqueueTask(solve_kernel));
 
     // Copy Result from Device Global Memory to Host Local Memory
     OCL_CHECK(err, err = q.enqueueMigrateMemObjects({trail_buffer, is_sat_buffer}, CL_MIGRATE_MEM_OBJECT_HOST));

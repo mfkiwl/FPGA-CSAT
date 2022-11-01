@@ -11,9 +11,7 @@ BUILD_DIR := ./build_dir.$(TARGET).$(XSA)
 EXECUTABLE = ./csat
 KERNEL = solve
 
-VPP_PFLAGS := 
-CMD_ARGS =
-CMD_ARGS += $(BUILD_DIR)/$(KERNEL).xclbin
+KERNEL_BIN = $(BUILD_DIR)/$(KERNEL).xclbin
 CXXFLAGS += -I$(XILINX_XRT)/include -I$(XILINX_VIVADO)/include -Wall -O0 -g -std=c++17
 LDFLAGS += -L$(XILINX_XRT)/lib -pthread -lOpenCL
 
@@ -72,17 +70,17 @@ $(EMCONFIG_DIR)/emconfig.json:
 run: all
 ifeq ($(TARGET),$(filter $(TARGET),sw_emu hw_emu))
 	cp -rf $(EMCONFIG_DIR)/emconfig.json .
-	XCL_EMULATION_MODE=$(TARGET) $(EXECUTABLE) $(CMD_ARGS)
+	XCL_EMULATION_MODE=$(TARGET) $(EXECUTABLE) $(KERNEL_BIN) $(CIRCUIT) $(SAT)
 else
-	$(EXECUTABLE) $(CMD_ARGS)
+	$(EXECUTABLE) $(KERNEL_BIN) $(CIRCUIT) $(SAT)
 endif
 
 .PHONY: test
 test: $(EXECUTABLE)
 ifeq ($(TARGET),$(filter $(TARGET),sw_emu hw_emu))
-	XCL_EMULATION_MODE=$(TARGET) $(EXECUTABLE) $(CMD_ARGS)
+	XCL_EMULATION_MODE=$(TARGET) $(EXECUTABLE) $(KERNEL_BIN) $(CIRCUIT) $(SAT)
 else
-	$(EXECUTABLE) $(CMD_ARGS)
+	$(EXECUTABLE) $(KERNEL_BIN) $(CIRCUIT) $(SAT)
 endif
 
 ############################## Cleaning Rules ##############################
@@ -101,8 +99,8 @@ cleanall: clean
 ############################## Help Section ##############################
 help:
 	$(ECHO) "Makefile Usage:"
-	$(ECHO) "  make all TARGET=<sw_emu/hw_emu/hw> PLATFORM=<FPGA platform> EDGE_COMMON_SW=<rootfs and kernel image path>"
-	$(ECHO) "      Command to generate the design for specified Target and Shell."
+	$(ECHO) "  make all TARGET=<sw_emu/hw_emu/hw>"
+	$(ECHO) "      Command to generate the design for specified Target."
 	$(ECHO) ""
 	$(ECHO) "  make clean "
 	$(ECHO) "      Command to remove the generated non-hardware files."
@@ -110,19 +108,17 @@ help:
 	$(ECHO) "  make cleanall"
 	$(ECHO) "      Command to remove all the generated files."
 	$(ECHO) ""
-	$(ECHO) "  make test PLATFORM=<FPGA platform>"
+	$(ECHO) "  make test TARGET=<sw_emu/hw_emu/hw(default)> CIRCUIT=<.eqn file path> SAT=<output to satisfy>"
 	$(ECHO) "      Command to run the application. This is same as 'run' target but does not have any makefile dependency."
 	$(ECHO) ""
-	$(ECHO) "  make run TARGET=<sw_emu/hw_emu/hw> PLATFORM=<FPGA platform> EDGE_COMMON_SW=<rootfs and kernel image path>"
+	$(ECHO) "  make run TARGET=<sw_emu/hw_emu/hw(default)> CIRCUIT=<.eqn file path> SAT=<output to satisfy>"
 	$(ECHO) "      Command to run application in emulation."
 	$(ECHO) ""
-	$(ECHO) "  make build TARGET=<sw_emu/hw_emu/hw> PLATFORM=<FPGA platform> EDGE_COMMON_SW=<rootfs and kernel image path>"
+	$(ECHO) "  make build TARGET=<sw_emu/hw_emu/hw>"
 	$(ECHO) "      Command to build xclbin application."
 	$(ECHO) ""
-	$(ECHO) "  make host EDGE_COMMON_SW=<rootfs and kernel image path>"
+	$(ECHO) "  make host"
 	$(ECHO) "      Command to build host application."
-	$(ECHO) "      EDGE_COMMON_SW is required for SoC shells. Please download and use the pre-built image from - "
-	$(ECHO) "      https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/embedded-platforms.html"
 	$(ECHO) ""
 
 ############################## License Section ##############################
