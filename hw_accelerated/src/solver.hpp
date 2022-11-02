@@ -55,6 +55,7 @@ void Solver::solve() {
 
     encoder::Graph graph;
     parseEQN(eqn_file_path, graph);
+    assert(encoder::validForHardware(graph));
 
     alignas(4096) array<GateNode, MAX_GATES> nodes;
     alignas(4096) array<TruthTable, MAX_GATES> truth_tables;

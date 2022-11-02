@@ -15,14 +15,13 @@
 #include "shared_structs.hpp"
 
 using namespace std;
-using namespace sw;
 
 namespace encoder {
 
 typedef kitty::static_truth_table<LUT_SIZE> TruthTable;
 
-/* For implication in hardware, no implication should occur for the inputs pins of a PI gate - they should stay unknown. 
- * This is accomplished by setting the truth table such that an input pin assignment depends on 
+/* For implication in hardware, no implication should occur for the inputs pins of a PI gate - they should stay unknown.
+ * This is accomplished by setting the truth table such that an input pin assignment depends on
  * the assignment of another input pin (which will never happen). XOR of 2 pins suffices.
  */
 const TruthTable pi_truth_table = kitty::nth_var<TruthTable>(LUT_SIZE, 0) ^ kitty::nth_var<TruthTable>(LUT_SIZE, 1);
@@ -94,13 +93,27 @@ struct Signal {
 };
 
 struct Graph {
-    vector<GateNode> nodes;
+    vector<sw::GateNode> nodes;
     vector<TruthTable> truth_tables;
     vector<string> primary_inputs;
     vector<string> primary_outputs;
-    unordered_map<string, GateID> name_map;
-    unordered_map<GateID, string> gate_map;
+    unordered_map<string, sw::GateID> name_map;
+    unordered_map<sw::GateID, string> gate_map;
 };
+
+bool validForHardware(const Graph& graph) {
+    if (graph.nodes.size() > MAX_GATES) {
+        cout << "MAX_GATES constraint not satisfied: " << graph.nodes.size() << " > " << MAX_GATES << endl;
+        return false;
+    }
+    for (const auto& g : graph.nodes) {
+        if (g.outputs.size() > MAX_FANOUT) {
+            cout << "MAX_FANOUT constraint not satisfied: " << g.outputs.size() << " > " << MAX_FANOUT << endl;
+            return false;
+        }
+    }
+    return true;
+}
 
 void parseEQN(string eqn_file_path, Graph& graph) {
     ifstream infile(eqn_file_path);
@@ -112,7 +125,7 @@ void parseEQN(string eqn_file_path, Graph& graph) {
     string line;
     vector<string> primary_inputs;
     vector<string> primary_outputs;
-    unordered_map<string, GateID> name_map;
+    unordered_map<string, sw::GateID> name_map;
     unordered_map<string, Signal> signals;
     uint32_t priority = 0;
 
@@ -173,7 +186,7 @@ void parseEQN(string eqn_file_path, Graph& graph) {
             // PI truth table is a pass-through of variable 0
             graph.truth_tables[gate] = pi_truth_table;
             // All inputs are no-connect
-            graph.nodes[gate].inputs.fill(NO_CONNECT);
+            graph.nodes[gate].inputs.fill(sw::NO_CONNECT);
             continue;
         }
 
@@ -184,8 +197,8 @@ void parseEQN(string eqn_file_path, Graph& graph) {
 
         // Create backwards and forwards edges from signal inputs
         for (uint8_t offset = 0; offset < signal.inputs.size(); offset++) {
-            OutPin pin = {gate, offset};
-            GateID predecessor = name_map.at(signal.inputs[offset]);
+            sw::OutPin pin = {gate, offset};
+            sw::GateID predecessor = name_map.at(signal.inputs[offset]);
 
             graph.nodes[predecessor].outputs.push_back(pin);
             graph.nodes[gate].inputs[offset] = (predecessor);
@@ -193,7 +206,7 @@ void parseEQN(string eqn_file_path, Graph& graph) {
 
         // Specify unused inputs as no-connect
         for (uint8_t offset = signal.inputs.size(); offset < LUT_SIZE; offset++) {
-            graph.nodes[gate].inputs[offset] = NO_CONNECT;
+            graph.nodes[gate].inputs[offset] = sw::NO_CONNECT;
         }
     }
 }
