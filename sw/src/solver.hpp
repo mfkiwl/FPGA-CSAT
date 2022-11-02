@@ -5,6 +5,7 @@
 #include "verify.hpp"
 
 using namespace encoder;
+using namespace sw;
 using namespace std;
 
 enum Direction : bool { outwards = false,
