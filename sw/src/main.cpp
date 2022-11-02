@@ -56,8 +56,6 @@ int main(int argc, char* argv[]) {
     test_3.solve();
     Solver test_4("../benchmarks/unit_tests/test4.eqn", "z");
     test_4.solve();
-    Solver test_5("../benchmarks/unit_tests/test5.eqn", "z");
-    test_5.solve();
 
     cout << "\n**************************************************************" << endl;
     cout << "User Input Solve:" << endl;

@@ -1,7 +1,8 @@
-# This should test Conflict Analysis. a must be zero, but we don't learn that until d is assigned both ways.
+# This tests for 1UIP instead of last UIP.
 INORDER = a b c d e;
 OUTORDER = z;
-n0 = (e * (a + !d) * (!a + d)) + (!e * ((!a * d) + (a * !d)));
-n1 = b + c;
-n2 = (!d * e) + (d * !e);
-z = n0 * n1 * n2;
+new_w0_ = (e * (a + !d) * (!a + d)) + (!e * ((!a * d) + (a * !d)));
+new_w1_ = (!d + (!b * c) + (b * !c)) * (d + ((b + !c) * (!b + c)));
+new_w2_ = (!d * e) + (d * !e);
+z = new_w2_ * new_w0_ * new_w1_;
+
