@@ -12,15 +12,28 @@ using namespace std;
 
 class Solver {
    public:
-    Solver(string eqn_file_path, string gate_to_satisfy, string binary_file) : eqn_file_path(eqn_file_path), gate_to_satisfy(gate_to_satisfy), binary_file(binary_file) {}
+    Solver(string eqn_file_path, string gate_to_satisfy, string binary_file);
     void solve();
 
+    encoder::Graph graph;
     string eqn_file_path;
+    string benchmark_dir;
+    string module_name;
     string gate_to_satisfy;
     string binary_file;
     alignas(4096) bool is_sat;
     unordered_map<string, bool> satisfying_assignment;
+
+    void writeTestbench();
+    void writeTCL();
 };
+
+Solver::Solver(string eqn_file_path, string gate_to_satisfy, string binary_file) : eqn_file_path(eqn_file_path), gate_to_satisfy(gate_to_satisfy), binary_file(binary_file) {
+    std::string file_name = eqn_file_path.substr(eqn_file_path.find_last_of("/") + 1);
+    std::string::size_type const p(file_name.find_last_of('.'));
+    benchmark_dir = eqn_file_path.substr(0, eqn_file_path.find_last_of("/") + 1);
+    module_name = file_name.substr(0, p);
+}
 
 void Solver::solve() {
     cl_int err;
@@ -53,7 +66,6 @@ void Solver::solve() {
         exit(EXIT_FAILURE);
     }
 
-    encoder::Graph graph;
     parseEQN(eqn_file_path, graph);
     assert(encoder::validForHardware(graph));
 
@@ -111,10 +123,17 @@ void Solver::solve() {
             } else {
                 assert(0 && "non ONE/ZERO assignment in trail");
             }
-            cout << graph.gate_map[g] << " = " << val << endl;
             assert(satisfying_assignment.find(graph.gate_map[g]) == satisfying_assignment.end() && "duplicate PI assignment in trail");
             satisfying_assignment.insert({graph.gate_map[g], val});
         }
         t++;
     }
+}
+
+void Solver::writeTestbench() {
+    verify::writeTestbench("tb.v", module_name, graph.primary_inputs, graph.primary_outputs, satisfying_assignment, gate_to_satisfy);
+}
+
+void Solver::writeTCL() {
+    verify::writeTCL("verify_tb.tcl", benchmark_dir, module_name);
 }

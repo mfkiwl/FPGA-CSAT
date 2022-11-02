@@ -299,7 +299,6 @@ void solve(const GateNode nodes[MAX_GATES], const TruthTable truth_tables[MAX_GA
     while (true) {
         bool conflict_occurred = false;
         Conflict conflict;
-        cout << "Running Propagate" << endl;
         Propagate(nodes, decision_level, truth_tables, propagation_queue, pq_end, circuit, trail, trail_end, level_assigned, antecedent, conflict_occurred, conflict);
         if (conflict_occurred) {
             cout << "Conflict occurred @ " << decision_level << endl;

@@ -17,5 +17,11 @@ int main(int argc, char** argv) {
     Solver S(eqn_file_path, gate_to_satisfy, kernel_bin);
     S.solve();
 
+    cout << S.graph.primary_inputs.size() << " primary inputs read." << endl;
+    cout << S.graph.primary_outputs.size() << " primary outputs read." << endl;
+
+    S.writeTestbench();
+    S.writeTCL();
+
     return EXIT_SUCCESS;
 }
