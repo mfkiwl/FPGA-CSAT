@@ -19,6 +19,7 @@ int main(int argc, char** argv) {
 
     cout << S.graph.primary_inputs.size() << " primary inputs read." << endl;
     cout << S.graph.primary_outputs.size() << " primary outputs read." << endl;
+    cout << S.conflict_count << " conflicts occurred." << endl;
 
     S.writeTestbench();
     S.writeTCL();

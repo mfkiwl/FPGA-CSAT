@@ -259,7 +259,7 @@ extern "C" {
 
 */
 
-void solve(const GateNode nodes[MAX_GATES], const TruthTable truth_tables[MAX_GATES], const uint32_t num_gates, const uint32_t gate_to_satisfy, PinAssignment trail[MAX_PINS], bool* is_sat) {
+void solve(const GateNode nodes[MAX_GATES], const TruthTable truth_tables[MAX_GATES], const uint32_t num_gates, const uint32_t gate_to_satisfy, PinAssignment trail[MAX_PINS], bool* is_sat, uint32_t* conflict_count) {
     uint32_t trail_end = 0;
     static Propagation propagation_queue[MAX_PROPAGATIONS];
     uint32_t pq_end = 0;
@@ -301,6 +301,7 @@ void solve(const GateNode nodes[MAX_GATES], const TruthTable truth_tables[MAX_GA
         Conflict conflict;
         Propagate(nodes, decision_level, truth_tables, propagation_queue, pq_end, circuit, trail, trail_end, level_assigned, antecedent, conflict_occurred, conflict);
         if (conflict_occurred) {
+            (*conflict_count)++;
             cout << "Conflict occurred @ " << decision_level << endl;
             cout << "conflict = ";
             conflict.print();

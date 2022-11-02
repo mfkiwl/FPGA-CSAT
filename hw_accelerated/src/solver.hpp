@@ -22,6 +22,7 @@ class Solver {
     string gate_to_satisfy;
     string binary_file;
     alignas(4096) bool is_sat;
+    alignas(4096) uint32_t conflict_count;
     unordered_map<string, bool> satisfying_assignment;
 
     void writeTestbench();
@@ -75,10 +76,12 @@ void Solver::solve() {
 
     // Allocate Buffer in Global Memory
     is_sat = false;
+    conflict_count = 0;
     OCL_CHECK(err, cl::Buffer nodes_buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(GateNode) * nodes.size(), nodes.data(), &err));
     OCL_CHECK(err, cl::Buffer truth_tables_buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(TruthTable) * truth_tables.size(), truth_tables.data(), &err));
     OCL_CHECK(err, cl::Buffer trail_buffer(context, CL_MEM_USE_HOST_PTR, sizeof(PinAssignment) * trail.size(), trail.data(), &err));
     OCL_CHECK(err, cl::Buffer is_sat_buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_WRITE_ONLY, sizeof(is_sat), &is_sat, &err));
+    OCL_CHECK(err, cl::Buffer conflict_count_buffer(context, CL_MEM_USE_HOST_PTR, sizeof(conflict_count), &conflict_count, &err));
 
     OCL_CHECK(err, err = solve_kernel.setArg(0, nodes_buffer));
     OCL_CHECK(err, err = solve_kernel.setArg(1, truth_tables_buffer));
@@ -86,6 +89,7 @@ void Solver::solve() {
     OCL_CHECK(err, err = solve_kernel.setArg(3, graph.name_map.at(gate_to_satisfy)));
     OCL_CHECK(err, err = solve_kernel.setArg(4, trail_buffer));
     OCL_CHECK(err, err = solve_kernel.setArg(5, is_sat_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(6, conflict_count_buffer));
 
     // Initialize Arrays
     for (unsigned int i = 0; i < graph.nodes.size(); i++) {
@@ -95,13 +99,13 @@ void Solver::solve() {
     }
 
     // Copy input data to device global memory
-    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({nodes_buffer, truth_tables_buffer, trail_buffer, is_sat_buffer}, 0 /* 0 means from host*/));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({nodes_buffer, truth_tables_buffer, trail_buffer, is_sat_buffer, conflict_count_buffer}, 0 /* 0 means from host*/));
 
     // Launch the Kernel
     OCL_CHECK(err, err = q.enqueueTask(solve_kernel));
 
     // Copy Result from Device Global Memory to Host Local Memory
-    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({trail_buffer, is_sat_buffer}, CL_MIGRATE_MEM_OBJECT_HOST));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({trail_buffer, is_sat_buffer, conflict_count_buffer}, CL_MIGRATE_MEM_OBJECT_HOST));
     q.finish();
 
     // Extract PI assignments from trail
