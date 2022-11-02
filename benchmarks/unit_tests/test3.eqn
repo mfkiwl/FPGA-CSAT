@@ -1,6 +1,7 @@
-# should be UNSAT
-INORDER = a b;
+# This should test Conflict Analysis. a must be zero, but we don't learn that until d is assigned both ways.
+INORDER = a b c d e;
 OUTORDER = z;
-n0 = a * !b;
-n1 = !a * b;
-z = n0 * n1;
+n0 = (e * (a + !d) * (!a + d)) + (!e * ((!a * d) + (a * !d)));
+n1 = b + c;
+n2 = (!d * e) + (d * !e);
+z = n0 * n1 * n2;

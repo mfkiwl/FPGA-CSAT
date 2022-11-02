@@ -1,5 +1,6 @@
-INORDER = a b c d e f g h i j k l;
+# should be UNSAT
+INORDER = a b;
 OUTORDER = z;
-n0 = a + !b + !c + d + e + f + !g + h;
-n1 = !e * f * g * h * i * !j * k * l;
+n0 = a * !b;
+n1 = !a * b;
 z = n0 * n1;

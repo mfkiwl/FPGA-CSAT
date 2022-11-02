@@ -1,4 +1,4 @@
-# Custom .eqn file to test graph transformation
+# Basic SAT
 INORDER = a b c d e f g h i j k l;
 OUTORDER = z;
 n0 = a + !b + !c + d + e + f + !g + h;
