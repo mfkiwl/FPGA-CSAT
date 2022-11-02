@@ -18,6 +18,8 @@ class Solver {
     string eqn_file_path;
     string gate_to_satisfy;
     string binary_file;
+    alignas(4096) bool is_sat;
+    unordered_map<string, bool> satisfying_assignment;
 };
 
 void Solver::solve() {
@@ -54,12 +56,12 @@ void Solver::solve() {
     encoder::Graph graph;
     parseEQN(eqn_file_path, graph);
 
-    array<GateNode, MAX_GATES> nodes;
-    array<TruthTable, MAX_GATES> truth_tables;
-    array<PinAssignment, MAX_PINS> trail;
-    bool is_sat;
+    alignas(4096) array<GateNode, MAX_GATES> nodes;
+    alignas(4096) array<TruthTable, MAX_GATES> truth_tables;
+    alignas(4096) array<PinAssignment, MAX_PINS> trail;
 
     // Allocate Buffer in Global Memory
+    is_sat = false;
     OCL_CHECK(err, cl::Buffer nodes_buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(GateNode) * nodes.size(), nodes.data(), &err));
     OCL_CHECK(err, cl::Buffer truth_tables_buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(TruthTable) * truth_tables.size(), truth_tables.data(), &err));
     OCL_CHECK(err, cl::Buffer trail_buffer(context, CL_MEM_USE_HOST_PTR, sizeof(PinAssignment) * trail.size(), trail.data(), &err));
@@ -89,4 +91,29 @@ void Solver::solve() {
     q.finish();
 
     // Extract PI assignments from trail
+    if (is_sat) {
+        cout << "SAT" << endl;
+    } else {
+        cout << "UNSAT" << endl;
+    }
+
+    satisfying_assignment.clear();
+    uint32_t t = 0;
+    while (satisfying_assignment.size() < graph.primary_inputs.size()) {
+        if (trail[t].direction == OUTWARDS && graph.nodes[trail[t].to_gate].is_PI) {
+            GateID g = trail[t].to_gate;
+            bool val;
+            if (trail[t].value == ONE) {
+                val = true;
+            } else if (trail[t].value == ZERO) {
+                val = false;
+            } else {
+                assert(0 && "non ONE/ZERO assignment in trail");
+            }
+            cout << graph.gate_map[g] << " = " << val << endl;
+            assert(satisfying_assignment.find(graph.gate_map[g]) == satisfying_assignment.end() && "duplicate PI assignment in trail");
+            satisfying_assignment.insert({graph.gate_map[g], val});
+        }
+        t++;
+    }
 }

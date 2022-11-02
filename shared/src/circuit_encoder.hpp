@@ -20,6 +20,12 @@ namespace encoder {
 
 typedef kitty::static_truth_table<LUT_SIZE> TruthTable;
 
+/* For implication in hardware, no implication should occur for the inputs pins of a PI gate - they should stay unknown. 
+ * This is accomplished by setting the truth table such that an input pin assignment depends on 
+ * the assignment of another input pin (which will never happen). XOR of 2 pins suffices.
+ */
+const TruthTable pi_truth_table = kitty::nth_var<TruthTable>(LUT_SIZE, 0) ^ kitty::nth_var<TruthTable>(LUT_SIZE, 1);
+
 bool stringStartsWith(const string_view& str, const string_view& prefix) {
     return prefix.size() <= str.size() && str.rfind(prefix, 0) == 0;
 }
@@ -164,7 +170,7 @@ void parseEQN(string eqn_file_path, Graph& graph) {
 
         if (signal.is_PI) {
             // PI truth table is a pass-through of variable 0
-            graph.truth_tables[gate] = kitty::nth_var<TruthTable>(LUT_SIZE, 0);
+            graph.truth_tables[gate] = pi_truth_table;
             // All inputs are no-connect
             graph.nodes[gate].inputs.fill(sw::NO_CONNECT);
             continue;

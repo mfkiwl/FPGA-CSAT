@@ -5,6 +5,50 @@
 #include "implication.hpp"
 #include "parameters.hpp"
 
+void kernelTests() {
+    /* Implication Tests */
+    TruthTable var0("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", 16);
+    TruthTable var1("CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC", 16);
+    TruthTable pi_tt("6666666666666666666666666666666666666666666666666666666666666666", 16);
+    TruthTable tt = var0 | var1;
+    Gate gate, implied;
+
+    gate = Gate(-1);
+    gate.output() = ONE;
+    implied = imply(gate, var0);
+    assert(implied.input(0) == ONE);
+    assert(implied.input(1) == UNKNOWN);
+    assert(implied.output() == ONE);
+
+    gate = Gate(-1);
+    gate.output() = ONE;
+    gate.input(0) = ZERO;
+    implied = imply(gate, tt);
+    assert(implied.input(1) == ONE);
+
+    gate = Gate(-1);
+    gate.input(0) = ZERO;
+    gate.input(1) = ZERO;
+    implied = imply(gate, tt);
+    assert(implied.output() == ZERO);
+
+    // We don't want any input pins to get assigned because of imply() on a PI gate
+    gate = Gate(-1);
+    gate.output() = ONE;
+    implied = imply(gate, pi_tt);
+    assert(implied.input(0) == UNKNOWN);
+    gate.output() = ZERO;
+    implied = imply(gate, pi_tt);
+    assert(implied.input(0) == UNKNOWN);
+}
+
+void printTrail(const PinAssignment trail[MAX_PINS], const uint32_t& trail_end) {
+    for (uint32_t i = 0; i < trail_end; i++) {
+        cout << i << ": ";
+        trail[i].print();
+    }
+}
+
 void Queue(const Propagation& prop, Propagation propagation_queue[MAX_PROPAGATIONS], uint32_t& pq_end) {
     propagation_queue[pq_end] = prop;
     pq_end++;
@@ -15,7 +59,7 @@ void Record(const PinAssignment& pa, PinAssignment trail[MAX_PINS], uint32_t& tr
     trail_end++;
 }
 
-void Propagate(const GateNode nodes[MAX_GATES], const uint32_t decision_level, const TruthTable truth_tables[MAX_GATES], Propagation propagation_queue[MAX_PROPAGATIONS], uint32_t& pq_end, Gate circuit[MAX_GATES], PinAssignment trail[MAX_PINS], uint32_t& trail_end, uint32_t level_assigned[MAX_GATES], Pin antecedent[MAX_GATES], bool& conflict_occurred, Conflict conflict) {
+void Propagate(const GateNode nodes[MAX_GATES], const uint32_t decision_level, const TruthTable truth_tables[MAX_GATES], Propagation propagation_queue[MAX_PROPAGATIONS], uint32_t& pq_end, Gate circuit[MAX_GATES], PinAssignment trail[MAX_PINS], uint32_t& trail_end, uint32_t level_assigned[MAX_GATES], Pin antecedent[MAX_GATES], bool& conflict_occurred, Conflict& conflict) {
     uint32_t p = 0;
     while (p < pq_end) {
         const Propagation prop = propagation_queue[p];
@@ -107,15 +151,21 @@ void Propagate(const GateNode nodes[MAX_GATES], const uint32_t decision_level, c
 }
 
 void ConflictAnalysis(const Conflict& conflict, const GateNode nodes[MAX_GATES], const PinAssignment trail[MAX_PINS], const uint32_t& trail_end, const uint32_t decision_level, const Pin antecedent[MAX_GATES], bool stamped[MAX_GATES][LUT_SIZE + 1], uint32_t level_assigned[MAX_GATES], ArrayQueue& VMTF_queue, uint32_t& backjump_level, uint32_t& UIP_step) {
+    // cout << "Conflict Analysis" << endl;
+    // cout << "Stamping " << conflict.source_gate << "[" << LUT_SIZE << "]" << endl;
+    // cout << "Stamping " << conflict.sink_gate << "[" << conflict.sink_offset << "]" << endl;
     stamped[conflict.source_gate][LUT_SIZE] = true;
     stamped[conflict.sink_gate][conflict.sink_offset] = true;
     uint32_t pins_stamped = 2;
 
     bool UIP_found = false;
     for (uint32_t t = trail_end - 1; UIP_found == false; t--) {
+        // cout << "t = " << t << " ";
+        // trail[t].print();
         const PinAssignment& pa = trail[t];
         Offset pin_index = (pa.direction == OUTWARDS) ? Offset(LUT_SIZE) : pa.to_offset;
         if (stamped[pa.to_gate][pin_index]) {
+            // cout << pa.to_gate << "[" << pin_index << "] is stamped" << endl;
             if (pa.direction == OUTWARDS) {
                 VMTF_queue.bump(pa.to_gate);
             }
@@ -163,7 +213,7 @@ void ConflictAnalysis(const Conflict& conflict, const GateNode nodes[MAX_GATES],
                 stamped[ante.gate][ante.offset] = true;
                 pins_stamped++;
             }
-            stamped[pa.to_gate][pin_index] = true;
+            stamped[pa.to_gate][pin_index] = false;
             pins_stamped--;
         }
         // unassign to prevent pins becoming irresolvably stamped (i.e. on a repeat visit)
@@ -209,43 +259,55 @@ extern "C" {
 
 */
 
-void solve(const GateNode nodes[MAX_GATES], const TruthTable truth_tables[MAX_GATES], const uint32_t num_gates, const uint32_t gate_to_satisfy, PinAssignment trail[MAX_PINS], bool& is_sat) {
+void solve(const GateNode nodes[MAX_GATES], const TruthTable truth_tables[MAX_GATES], const uint32_t num_gates, const uint32_t gate_to_satisfy, PinAssignment trail[MAX_PINS], bool* is_sat) {
     uint32_t trail_end = 0;
     static Propagation propagation_queue[MAX_PROPAGATIONS];
     uint32_t pq_end = 0;
-    static uint32_t level_assigned[MAX_GATES];
     static Pin antecedent[MAX_GATES];
     static uint32_t trail_lim[MAX_GATES];
 
+    static uint32_t level_assigned[MAX_GATES];
+    for (unsigned int i = 0; i < MAX_GATES; i++) {
+        level_assigned[i] = UNASSIGNED;
+    }
+
     static Gate circuit[MAX_GATES];
+    for (uint32_t i = 0; i < num_gates; i++) {
+        circuit[i] = Gate(-1);  // All UNKNOWN
+    }
+
     GateID VMTF_next_search = 0;
     static ArrayQueue VMTF_queue(num_gates);
-    static bool stamped[MAX_GATES][LUT_SIZE + 1];
-
     VMTF_queue = ArrayQueue(num_gates);
+
+    static bool stamped[MAX_GATES][LUT_SIZE + 1];
     for (unsigned int i = 0; i < MAX_GATES; i++) {
         for (unsigned int j = 0; j < LUT_SIZE + 1; j++) {
             stamped[i][j] = false;
         }
     }
 
-    for (uint32_t i = 0; i < num_gates; i++) {
-        circuit[i] = 0;
-    }
-
     // static PinAssignment local_trail[MAX_LOCAL_TRAIL];  // !TODO Use burst write and reads with SRAM array to accelerate trail accesses
+
+    kernelTests();
 
     uint32_t decision_level = 0;
 
     Queue(Propagation(DECISION, gate_to_satisfy, 0, OUTWARDS, ONE), propagation_queue, pq_end);
 
+    cout << "Hello! Starting solve kernel LOOP. num_gates = " << num_gates << ". gate_to_satisfy = " << gate_to_satisfy << endl;
     while (true) {
         bool conflict_occurred = false;
         Conflict conflict;
+        cout << "Running Propagate" << endl;
         Propagate(nodes, decision_level, truth_tables, propagation_queue, pq_end, circuit, trail, trail_end, level_assigned, antecedent, conflict_occurred, conflict);
         if (conflict_occurred) {
+            cout << "Conflict occurred @ " << decision_level << endl;
+            cout << "conflict = ";
+            conflict.print();
             if (decision_level == 0) {
-                is_sat = false;
+                cout << "Kernel: UNSAT" << endl;
+                *is_sat = false;
                 return;
             }
             uint32_t backjump_level = 0;
@@ -255,12 +317,14 @@ void solve(const GateNode nodes[MAX_GATES], const TruthTable truth_tables[MAX_GA
 
             uint32_t backtrack_step = trail_lim[backjump_level];
             CancelUntil(backtrack_step, trail, trail_end, circuit, level_assigned);
+            decision_level = backjump_level;
             Queue(Propagation(LEARNED, trail[UIP_step].to_gate, 0, OUTWARDS, invert(trail[UIP_step].value)), propagation_queue, pq_end);
         } else {
             trail_lim[decision_level] = trail_end;
             Propagation branching_prop;
             if (!PickBranching(VMTF_queue, VMTF_next_search, level_assigned, branching_prop)) {
-                is_sat = true;
+                cout << "Kernel: SAT" << endl;
+                *is_sat = true;
                 return;
             }
             decision_level++;
