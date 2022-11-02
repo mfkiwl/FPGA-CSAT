@@ -182,7 +182,7 @@ void Solver::solve() {
     circuit.clear();
     circuit.resize(num_gates);
     for (size_t i = 0; i < num_gates; i++) {
-        circuit[i].truth_table = nodes[i].truth_table;
+        circuit[i].truth_table = graph.truth_tables[i];
     }
 
     decision_level = 0;
@@ -345,7 +345,6 @@ void Solver::conflictAnalysis(const ConflictWire& conflict_wire, uint32_t& backj
     const vector<GateNode>& nodes = graph.nodes;
 
     backjump_level = 0;
-    UIP_step = trail_lim[decision_level - 1];
     uint32_t pins_stamped = 0;
 
     auto stamp = [&](GateID gate, uint8_t index) {
