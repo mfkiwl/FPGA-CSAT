@@ -90,7 +90,8 @@ void Solver::solve() {
     // Initialize Arrays
     for (unsigned int i = 0; i < graph.nodes.size(); i++) {
         nodes[i] = GateNode(graph.nodes[i]);
-        truth_tables[i] = TruthTable(to_hex(graph.truth_tables[i]).c_str(), 16);
+        string hex_prefixed_string = string("0x" + to_hex(graph.truth_tables[i]));  // Explicit prefix needed because ap_int_base will try to guess radix even if it is provided
+        truth_tables[i] = TruthTable(hex_prefixed_string.c_str());
     }
 
     // Copy input data to device global memory
