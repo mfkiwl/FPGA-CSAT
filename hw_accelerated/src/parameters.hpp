@@ -11,7 +11,7 @@ static constexpr unsigned int ceillog2(unsigned int x) {
 }
 
 constexpr unsigned int MAX_PINS = MAX_GATES * (1 + LUT_SIZE);
-constexpr unsigned int MAX_PROPAGATIONS = 1024;
+constexpr unsigned int MAX_PROPAGATIONS = 4096;
 constexpr unsigned int MAX_LOCAL_TRAIL = MAX_PROPAGATIONS * (1 + LUT_SIZE);
 
 constexpr unsigned int GATE_ID_BITS = 16;

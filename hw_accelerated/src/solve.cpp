@@ -52,6 +52,7 @@ void printTrail(const PinAssignment trail[MAX_PINS], const uint32_t& trail_end) 
 void Queue(const Propagation& prop, Propagation propagation_queue[MAX_PROPAGATIONS], uint32_t& pq_end) {
     propagation_queue[pq_end] = prop;
     pq_end++;
+    assert(pq_end < MAX_PROPAGATIONS);
 }
 
 void Record(const PinAssignment& pa, PinAssignment trail[MAX_PINS], uint32_t& trail_end) {
