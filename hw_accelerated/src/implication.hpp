@@ -2,11 +2,6 @@
 #include "hardware_structs.hpp"
 #include "shared_parameters.hpp"
 
-const PinValue ZERO = 0b00;
-const PinValue ONE = 0b01;
-const PinValue DONTCARE = 0b10;
-const PinValue UNKNOWN = 0b11;
-
 PinValue invert(const PinValue& x) {
     if (x == ZERO) {
         return ONE;
@@ -54,22 +49,22 @@ Gate imply(Gate pins, const TruthTable& tt) {
 
     // Mask out rows of the TT
     for (unsigned int i = 0; i < LUT_SIZE; i++) {
-        if (pins.input(i) == ZERO) {
+        if (pins.input(i) == ONE) {
             mask &= MASKS.mask_tables[i][0];
-        } else if (pins.input(i) == ONE) {
+        } else if (pins.input(i) == ZERO) {
             mask &= MASKS.mask_tables[i][1];
         }
     }
-    if (pins.output() == ZERO) {
-        mask &= ~tt;
-    } else if (pins.output() == ONE) {
+    if (pins.output() == ONE) {
         mask &= tt;
+    } else if (pins.output() == ZERO) {
+        mask &= ~tt;
     }
 
     // If a column only contains 1 value, it can be implied
     for (unsigned int i = 0; i < LUT_SIZE; i++) {
-        TruthTable remaining_zeros = mask & MASKS.mask_tables[i][0];
-        TruthTable remaining_ones = mask & MASKS.mask_tables[i][1];
+        TruthTable remaining_ones = mask & MASKS.mask_tables[i][0];
+        TruthTable remaining_zeros = mask & MASKS.mask_tables[i][1];
         if (remaining_ones.nor_reduce()) {
             implied_pins.input(i) = ZERO;
         } else if (remaining_zeros.nor_reduce()) {
@@ -78,8 +73,8 @@ Gate imply(Gate pins, const TruthTable& tt) {
             implied_pins.input(i) = UNKNOWN;
         }
     }
-    TruthTable remaining_zeros = mask & ~tt;
     TruthTable remaining_ones = mask & tt;
+    TruthTable remaining_zeros = mask & ~tt;
     if (remaining_ones.nor_reduce()) {
         implied_pins.output() = ZERO;
     } else if (remaining_zeros.nor_reduce()) {

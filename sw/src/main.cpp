@@ -46,18 +46,16 @@ int main(int argc, char* argv[]) {
     /* CSAT Solver Test
      */
     cout << "Automated Tests:" << endl;
-    Solver test_0("/home/erin/Data/Saved/Research/CSAT_solver/benchmarks/unit_tests/test0.eqn", "z");
+    Solver test_0("../benchmarks/unit_tests/test0.eqn", "z");
     test_0.solve();
-    Solver test_1("/home/erin/Data/Saved/Research/CSAT_solver/benchmarks/unit_tests/test1.eqn", "z");
+    Solver test_1("../benchmarks/unit_tests/test1.eqn", "z");
     test_1.solve();
-    Solver test_2("/home/erin/Data/Saved/Research/CSAT_solver/benchmarks/unit_tests/test2.eqn", "z");
+    Solver test_2("../benchmarks/unit_tests/test2.eqn", "z");
     test_2.solve();
-    Solver test_3("/home/erin/Data/Saved/Research/CSAT_solver/benchmarks/unit_tests/test3.eqn", "z");
+    Solver test_3("../benchmarks/unit_tests/test3.eqn", "z");
     test_3.solve();
-    Solver test_4("/home/erin/Data/Saved/Research/CSAT_solver/benchmarks/unit_tests/test4.eqn", "z");
+    Solver test_4("../benchmarks/unit_tests/test4.eqn", "z");
     test_4.solve();
-    Solver test_5("/home/erin/Data/Saved/Research/CSAT_solver/benchmarks/unit_tests/test5.eqn", "z");
-    test_5.solve();
 
     cout << "\n**************************************************************" << endl;
     cout << "User Input Solve:" << endl;

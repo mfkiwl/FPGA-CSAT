@@ -19,6 +19,11 @@ const GateID DECISION = GateID(sw::DECISION);
 const GateID SELF = GateID(sw::SELF);
 const GateID LEARNED = GateID(sw::LEARNED);  // placeholder
 
+const PinValue ZERO = 0b00;
+const PinValue ONE = 0b01;
+const PinValue DONTCARE = 0b10;
+const PinValue UNKNOWN = 0b11;
+
 const uint32_t UNASSIGNED = -1;
 
 struct GateNode {
@@ -42,10 +47,10 @@ struct GateNode {
 struct Gate : ap_uint<2 * (LUT_SIZE + 1)> {
     using ap_uint<2 * (LUT_SIZE + 1)>::ap_uint;
     ap_range_ref<width, false> input(Offset i) {
-        return this->range(2 * i - 1, 0);
+        return this->range(2 * i + 1, 2 * i);
     }
     ap_range_ref<width, false> output() {
-        return this->range(2 * (LUT_SIZE + 1) - 1, 2 * LUT_SIZE);
+        return this->range(2 * LUT_SIZE + 1, 2 * LUT_SIZE);
     }
 };
 
@@ -71,6 +76,13 @@ struct Propagation {
     Offset sink_offset;
     Direction direction;
     PinValue value;
+    void print() const {
+        if (direction == OUTWARDS) {
+            cout << "OUTWARDS: " << from_gate << "[" << sink_offset << "] -> " << to_gate << " ( = " << value << " )" << endl;
+        } else {
+            cout << "INWARDS: " << from_gate << " -> " << to_gate << "[" << sink_offset << "] ( = " << value << " )" << endl;
+        }
+    }
 };
 
 struct PinAssignment {
@@ -81,12 +93,23 @@ struct PinAssignment {
     Offset to_offset;
     Direction direction;
     PinValue value;
+    void print() const {
+        if (direction == OUTWARDS) {
+            cout << "OUTWARDS: " << to_gate << " = " << value << endl;
+        } else {
+            cout << "INWARDS: " << to_gate
+                 << "[" << to_offset << "] = " << value << endl;
+        }
+    }
 };
 
 struct Conflict {
     GateID source_gate;
     GateID sink_gate;
     Offset sink_offset;
+    void print() const {
+        cout << source_gate << " <-> " << sink_gate << "[" << sink_offset << "]" << endl;
+    }
 };
 
 struct ArrayQueue {
