@@ -12,7 +12,7 @@ using namespace std;
 
 class Solver {
    public:
-    Solver(string eqn_file_path, string gate_to_satisfy, string binary_file);
+    Solver(string eqn_file_path, string gate_to_satisfy, string kernel_bin);
     void solve();
 
     encoder::Graph graph;
@@ -20,7 +20,7 @@ class Solver {
     string benchmark_dir;
     string module_name;
     string gate_to_satisfy;
-    string binary_file;
+    string kernel_bin;
     alignas(4096) bool is_sat;
     alignas(4096) uint32_t conflict_count;
     unordered_map<string, bool> satisfying_assignment;
@@ -29,7 +29,7 @@ class Solver {
     void writeTCL();
 };
 
-Solver::Solver(string eqn_file_path, string gate_to_satisfy, string binary_file) : eqn_file_path(eqn_file_path), gate_to_satisfy(gate_to_satisfy), binary_file(binary_file) {
+Solver::Solver(string eqn_file_path, string gate_to_satisfy, string kernel_bin) : eqn_file_path(eqn_file_path), gate_to_satisfy(gate_to_satisfy), kernel_bin(kernel_bin) {
     std::string file_name = eqn_file_path.substr(eqn_file_path.find_last_of("/") + 1);
     std::string::size_type const p(file_name.find_last_of('.'));
     benchmark_dir = eqn_file_path.substr(0, eqn_file_path.find_last_of("/") + 1);
@@ -43,7 +43,7 @@ void Solver::solve() {
     cl::CommandQueue q;
 
     auto devices = xcl::get_xil_devices();
-    auto fileBuf = xcl::read_binary_file(binary_file);
+    auto fileBuf = xcl::read_binary_file(kernel_bin);
     cl::Program::Binaries bins{{fileBuf.data(), fileBuf.size()}};
     bool valid_device = false;
     for (unsigned int i = 0; i < devices.size(); i++) {
@@ -70,9 +70,10 @@ void Solver::solve() {
     parseEQN(eqn_file_path, graph);
     assert(encoder::validForHardware(graph));
 
-    alignas(4096) array<GateNode, MAX_GATES> nodes;
-    alignas(4096) array<TruthTable, MAX_GATES> truth_tables;
-    alignas(4096) array<PinAssignment, MAX_PINS> trail;
+    // static to avoid stack overflow
+    alignas(4096) static array<GateNode, MAX_GATES> nodes;
+    alignas(4096) static array<TruthTable, MAX_GATES> truth_tables;
+    alignas(4096) static array<PinAssignment, MAX_PINS> trail;
 
     // Allocate Buffer in Global Memory
     is_sat = false;
@@ -99,7 +100,7 @@ void Solver::solve() {
     }
 
     // Copy input data to device global memory
-    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({nodes_buffer, truth_tables_buffer, trail_buffer, is_sat_buffer, conflict_count_buffer}, 0 /* 0 means from host*/));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({nodes_buffer, truth_tables_buffer, trail_buffer, is_sat_buffer, conflict_count_buffer}, 0));
 
     // Launch the Kernel
     OCL_CHECK(err, err = q.enqueueTask(solve_kernel));
