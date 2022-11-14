@@ -1,0 +1,5 @@
+# Equations for "multiplier_14_sat" written by ABC on Mon Nov 14 18:21:03 2022
+INORDER = a[0] a[1] a[2] b[0] b[1];
+OUTORDER = sat;
+sat = a[0] * a[1] * b[1] * a[2] * !b[0];
+
