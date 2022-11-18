@@ -51,15 +51,15 @@ Gate imply(Gate pins, const TruthTable& tt) {
 imply_maskout_loop:
     for (unsigned int i = 0; i < LUT_SIZE; i++) {
 #pragma HLS unroll
-        if (pins[2 * i + 1, 2 * i] == ONE) {
+        if (pins(2 * i + 1, 2 * i) == ONE) {
             mask &= MASKS.mask_tables[i][0];
-        } else if (pins[2 * i + 1, 2 * i] == ZERO) {
+        } else if (pins(2 * i + 1, 2 * i) == ZERO) {
             mask &= MASKS.mask_tables[i][1];
         }
     }
-    if (pins[2 * LUT_SIZE + 1, 2 * LUT_SIZE] == ONE) {
+    if (pins(2 * LUT_SIZE + 1, 2 * LUT_SIZE) == ONE) {
         mask &= tt;
-    } else if (pins[2 * LUT_SIZE + 1, 2 * LUT_SIZE] == ZERO) {
+    } else if (pins(2 * LUT_SIZE + 1, 2 * LUT_SIZE) == ZERO) {
         mask &= ~tt;
     }
 
@@ -71,21 +71,21 @@ imply_isUnate_loop:
             TruthTable remaining_ones = mask & tt;
             TruthTable remaining_zeros = mask & ~tt;
             if (remaining_ones.nor_reduce()) {
-                implied_pins[2 * LUT_SIZE + 1, 2 * LUT_SIZE] = ZERO;
+                implied_pins(2 * LUT_SIZE + 1, 2 * LUT_SIZE) = ZERO;
             } else if (remaining_zeros.nor_reduce()) {
-                implied_pins[2 * LUT_SIZE + 1, 2 * LUT_SIZE] = ONE;
+                implied_pins(2 * LUT_SIZE + 1, 2 * LUT_SIZE) = ONE;
             } else {
-                implied_pins[2 * LUT_SIZE + 1, 2 * LUT_SIZE] = UNKNOWN;
+                implied_pins(2 * LUT_SIZE + 1, 2 * LUT_SIZE) = UNKNOWN;
             }
         } else {
             TruthTable remaining_ones = mask & MASKS.mask_tables[i][0];
             TruthTable remaining_zeros = mask & MASKS.mask_tables[i][1];
             if (remaining_ones.nor_reduce()) {
-                implied_pins[2 * i + 1, 2 * i] = ZERO;
+                implied_pins(2 * i + 1, 2 * i) = ZERO;
             } else if (remaining_zeros.nor_reduce()) {
-                implied_pins[2 * i + 1, 2 * i] = ONE;
+                implied_pins(2 * i + 1, 2 * i) = ONE;
             } else {
-                implied_pins[2 * i + 1, 2 * i] = UNKNOWN;
+                implied_pins(2 * i + 1, 2 * i) = UNKNOWN;
             }
         }
     }
