@@ -47,40 +47,47 @@ Gate imply(Gate pins, const TruthTable& tt) {
     Gate implied_pins;
     TruthTable mask = -1;  // all 1s
 
-    // Mask out rows of the TT
+// Mask out rows of the TT
+imply_maskout_loop:
     for (unsigned int i = 0; i < LUT_SIZE; i++) {
-        if (pins.input(i) == ONE) {
+#pragma HLS unroll
+        if (pins[2 * i + 1, 2 * i] == ONE) {
             mask &= MASKS.mask_tables[i][0];
-        } else if (pins.input(i) == ZERO) {
+        } else if (pins[2 * i + 1, 2 * i] == ZERO) {
             mask &= MASKS.mask_tables[i][1];
         }
     }
-    if (pins.output() == ONE) {
+    if (pins[2 * LUT_SIZE + 1, 2 * LUT_SIZE] == ONE) {
         mask &= tt;
-    } else if (pins.output() == ZERO) {
+    } else if (pins[2 * LUT_SIZE + 1, 2 * LUT_SIZE] == ZERO) {
         mask &= ~tt;
     }
 
-    // If a column only contains 1 value, it can be implied
-    for (unsigned int i = 0; i < LUT_SIZE; i++) {
-        TruthTable remaining_ones = mask & MASKS.mask_tables[i][0];
-        TruthTable remaining_zeros = mask & MASKS.mask_tables[i][1];
-        if (remaining_ones.nor_reduce()) {
-            implied_pins.input(i) = ZERO;
-        } else if (remaining_zeros.nor_reduce()) {
-            implied_pins.input(i) = ONE;
+// If a column only contains 1 value, it can be implied
+imply_isUnate_loop:
+    for (unsigned int i = 0; i <= LUT_SIZE; i++) {
+#pragma HLS unroll
+        if (i == LUT_SIZE) {
+            TruthTable remaining_ones = mask & tt;
+            TruthTable remaining_zeros = mask & ~tt;
+            if (remaining_ones.nor_reduce()) {
+                implied_pins[2 * LUT_SIZE + 1, 2 * LUT_SIZE] = ZERO;
+            } else if (remaining_zeros.nor_reduce()) {
+                implied_pins[2 * LUT_SIZE + 1, 2 * LUT_SIZE] = ONE;
+            } else {
+                implied_pins[2 * LUT_SIZE + 1, 2 * LUT_SIZE] = UNKNOWN;
+            }
         } else {
-            implied_pins.input(i) = UNKNOWN;
+            TruthTable remaining_ones = mask & MASKS.mask_tables[i][0];
+            TruthTable remaining_zeros = mask & MASKS.mask_tables[i][1];
+            if (remaining_ones.nor_reduce()) {
+                implied_pins[2 * i + 1, 2 * i] = ZERO;
+            } else if (remaining_zeros.nor_reduce()) {
+                implied_pins[2 * i + 1, 2 * i] = ONE;
+            } else {
+                implied_pins[2 * i + 1, 2 * i] = UNKNOWN;
+            }
         }
-    }
-    TruthTable remaining_ones = mask & tt;
-    TruthTable remaining_zeros = mask & ~tt;
-    if (remaining_ones.nor_reduce()) {
-        implied_pins.output() = ZERO;
-    } else if (remaining_zeros.nor_reduce()) {
-        implied_pins.output() = ONE;
-    } else {
-        implied_pins.output() = UNKNOWN;
     }
 
     return implied_pins;

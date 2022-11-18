@@ -99,6 +99,7 @@ struct Graph {
     vector<string> primary_outputs;
     unordered_map<string, sw::GateID> name_map;
     unordered_map<sw::GateID, string> gate_map;
+    uint32_t minor_pin_count;
 };
 
 bool validForHardware(const Graph& graph) {
@@ -172,6 +173,7 @@ void parseEQN(string eqn_file_path, Graph& graph) {
     graph.truth_tables.resize(signals.size());
     graph.primary_inputs = primary_inputs;
     graph.primary_outputs = primary_outputs;
+    graph.minor_pin_count = 0;
     graph.name_map = name_map;
     for (const auto& p : name_map) {
         graph.gate_map.insert(std::make_pair(p.second, p.first));
@@ -183,7 +185,6 @@ void parseEQN(string eqn_file_path, Graph& graph) {
         graph.nodes[gate].is_PI = signal.is_PI;
 
         if (signal.is_PI) {
-            // PI truth table is a pass-through of variable 0
             graph.truth_tables[gate] = pi_truth_table;
             // All inputs are no-connect
             graph.nodes[gate].inputs.fill(sw::NO_CONNECT);
@@ -201,6 +202,7 @@ void parseEQN(string eqn_file_path, Graph& graph) {
             sw::GateID predecessor = name_map.at(signal.inputs[offset]);
 
             graph.nodes[predecessor].outputs.push_back(pin);
+            graph.minor_pin_count++;
             graph.nodes[gate].inputs[offset] = (predecessor);
         }
 
