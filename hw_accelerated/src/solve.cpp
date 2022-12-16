@@ -272,6 +272,10 @@ extern "C" {
 */
 
 void solve(const GateNode nodes[MAX_GATES], const TruthTable truth_tables[MAX_GATES], const uint32_t num_gates, const uint32_t gate_to_satisfy, PinAssignment trail[MAX_PINS], bool* is_sat, uint32_t* conflict_count, uint32_t* decision_count, uint64_t* major_propagation_count, uint64_t* minor_propagation_count) {
+#pragma HLS INTERFACE mode = m_axi port = nodes
+#pragma HLS INTERFACE mode = m_axi port = truth_tables
+#pragma HLS INTERFACE mode = m_axi port = trail
+
     uint32_t trail_end = 0;
     static Propagation propagation_queue[MAX_PROPAGATIONS];
     uint32_t pq_end = 0;
@@ -297,7 +301,7 @@ initialize_circuit:
     static bool stamped[MAX_GATES][LUT_SIZE + 1];
 initialize_stamped:
     for (unsigned int i = 0; i < MAX_GATES; i++) {
-        initialize_stamped_sub:
+    initialize_stamped_sub:
         for (unsigned int j = 0; j < LUT_SIZE + 1; j++) {
             stamped[i][j] = false;
         }
