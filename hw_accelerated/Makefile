@@ -12,7 +12,7 @@ EXECUTABLE = ./csat
 KERNEL = solve
 
 KERNEL_BIN = $(BUILD_DIR)/$(KERNEL).xclbin
-CXXFLAGS += -I$(XILINX_XRT)/include -I$(XILINX_VIVADO)/include -Wall -O0 -g -std=c++17
+CXXFLAGS += -I$(XILINX_XRT)/include -I$(XILINX_VIVADO)/include -I$(PROJ_ROOT)/includes/xcl2 -Wall -O0 -g -std=c++17
 LDFLAGS += -L$(XILINX_XRT)/lib -pthread -lOpenCL
 
 LINK_OUTPUT := $(BUILD_DIR)/$(KERNEL).link.xclbin
@@ -20,9 +20,13 @@ PACKAGE_OUT = ./package.$(TARGET)
 
 COMMONFLAGS = -I$(PROJ_ROOT)/../shared/src
 
+HW_HEADERS := $(wildcard src/*.hpp)
+SHARED_HEADERS := $(wildcard ../shared/src/*.hpp)
+HEADERS := $(HW_HEADERS) $(SHARED_HEADERS)
+
 ############################## Setting up Host Variables ##############################
 #Include Required Host Source Files
-CXXFLAGS += -I$(PROJ_ROOT)/includes/xcl2 $(COMMONFLAGS)
+CXXFLAGS += $(COMMONFLAGS)
 HOST_SRCS += $(PROJ_ROOT)/includes/xcl2/xcl2.cpp ./src/host.cpp 
 
 # Host compiler global settings
@@ -49,13 +53,13 @@ build: check-vitis $(BUILD_DIR)/$(KERNEL).xclbin
 xclbin: build
 
 ############################## Setting Rules for Binary Containers (Building Kernels) ##############################
-$(TEMP_DIR)/$(KERNEL).xo: src/$(KERNEL).cpp
+$(TEMP_DIR)/$(KERNEL).xo: src/$(KERNEL).cpp $(HEADERS)
 	mkdir -p $(TEMP_DIR)
 	v++ $(VPP_FLAGS) -c -k $(KERNEL) --temp_dir $(TEMP_DIR)  -I'$(<D)' -o'$@' '$<'
 
 $(BUILD_DIR)/$(KERNEL).xclbin: $(TEMP_DIR)/$(KERNEL).xo
 	mkdir -p $(BUILD_DIR)
-	v++ $(VPP_FLAGS) -l $(VPP_LDFLAGS) --temp_dir $(TEMP_DIR) -o'$(LINK_OUTPUT)' $(+)
+	v++ $(VPP_FLAGS) -l $(VPP_LDFLAGS) --temp_dir $(TEMP_DIR) -o'$(LINK_OUTPUT)' $(<)
 	v++ -p $(LINK_OUTPUT) $(VPP_FLAGS) --package.out_dir $(PACKAGE_OUT) -o $(BUILD_DIR)/$(KERNEL).xclbin
 
 ############################## Setting Rules for Host (Building Host Executable) ##############################
