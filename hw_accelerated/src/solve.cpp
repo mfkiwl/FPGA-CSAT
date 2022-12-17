@@ -124,6 +124,7 @@ Propagate_loop:
             level_assigned[g] = decision_level;
         Propagate_queueFanOut_loop:
             for (size_t i = 0; i < MAX_FANOUT; i++) {
+                #pragma HLS PIPELINE
                 // preemptively skip originating gate if it was the antecedent (splinter blast)
                 if (prop.direction == OUTWARDS && GateID(nodes[g].outputs[i].gate) == from_gate) {
                     continue;
