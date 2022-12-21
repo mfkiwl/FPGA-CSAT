@@ -1,0 +1,1 @@
+vivado -nolog -nojournal -mode tcl -source run.tcl

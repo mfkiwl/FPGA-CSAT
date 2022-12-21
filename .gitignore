@@ -13,3 +13,5 @@ emconfig.json
 main
 csat
 .ipcache
+.Xil
+tb_sim
