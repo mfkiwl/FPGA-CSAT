@@ -15,3 +15,7 @@ csat
 .ipcache
 .Xil
 tb_sim
+
+.metadata
+.analytics
+.project
