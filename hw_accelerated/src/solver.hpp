@@ -27,9 +27,15 @@ class Solver {
     alignas(4096) uint64_t major_propagation_count;
     alignas(4096) uint64_t minor_propagation_count;
     unordered_map<string, bool> satisfying_assignment;
+    std::chrono::milliseconds duration;
 
+    void printSummary();
+    void logSummary(string log_file_path);
     void writeTestbench();
     void writeTCL();
+
+   private:
+    void _solve();
 };
 
 Solver::Solver(string eqn_file_path, string gate_to_satisfy, string kernel_bin) : eqn_file_path(eqn_file_path), gate_to_satisfy(gate_to_satisfy), kernel_bin(kernel_bin) {
@@ -40,6 +46,13 @@ Solver::Solver(string eqn_file_path, string gate_to_satisfy, string kernel_bin) 
 }
 
 void Solver::solve() {
+    auto t0 = std::chrono::high_resolution_clock::now();
+    _solve();
+    auto t1 = std::chrono::high_resolution_clock::now();
+    duration = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0);
+}
+
+void Solver::_solve() {
     cl_int err;
     cl::Context context;
     cl::Kernel solve_kernel;
@@ -122,12 +135,6 @@ void Solver::solve() {
     q.finish();
 
     // Extract PI assignments from trail
-    if (is_sat) {
-        cout << "SAT" << endl;
-    } else {
-        cout << "UNSAT" << endl;
-    }
-
     satisfying_assignment.clear();
     uint32_t t = 0;
     while (satisfying_assignment.size() < graph.primary_inputs.size()) {
@@ -146,6 +153,48 @@ void Solver::solve() {
         }
         t++;
     }
+}
+
+void Solver::printSummary() {
+    cout << eqn_file_path << endl;
+    cout << "SAT? = " << is_sat << endl;
+    cout << duration.count() << "ms" << endl;
+    cout << graph.nodes.size() << " nodes (major pins)." << endl;
+    cout << graph.minor_pin_count << " minor pins." << endl;
+    cout << graph.primary_inputs.size() << " primary inputs read." << endl;
+    cout << graph.primary_outputs.size() << " primary outputs read." << endl;
+    cout << conflict_count << " conflicts occurred." << endl;
+    cout << decision_count << " decisions occurred." << endl;
+    cout << major_propagation_count << " major propagations occurred." << endl;
+    cout << minor_propagation_count << " minor propagations occurred." << endl;
+}
+
+void Solver::logSummary(string log_file_path) {
+    auto fileExists = [](string file_name) {
+        ifstream infile(file_name);
+        return infile.good();
+    };
+
+    // Write Header for new log files
+    if (!fileExists(log_file_path)) {
+        ofstream log(log_file_path);
+        log << "path,SAT?,duration(ms),nodes (major pins),minor pins,primary inputs read,primary outputs read,conflicts occurred,decisions occurred,major propagations occurred,minor propagations occurred" << endl;
+        log.close();
+    }
+
+    // Write Summary
+    ofstream log(log_file_path, ios_base::app);
+    log << eqn_file_path << ",";
+    log << is_sat << ",";
+    log << duration.count() << ",";
+    log << graph.nodes.size() << ",";
+    log << graph.minor_pin_count << ",";
+    log << graph.primary_inputs.size() << ",";
+    log << graph.primary_outputs.size() << ",";
+    log << conflict_count << ",";
+    log << decision_count << ",";
+    log << major_propagation_count << ",";
+    log << minor_propagation_count << endl;
 }
 
 void Solver::writeTestbench() {
