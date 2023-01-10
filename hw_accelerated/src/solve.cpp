@@ -15,7 +15,7 @@ void kernelTests() {
 
     gate = Gate(-1);
     gate.output() = ONE;
-    implied = imply(gate, var0);
+    imply(gate, var0, implied);
     assert(implied.input(0) == ONE);
     assert(implied.input(1) == UNKNOWN);
     assert(implied.output() == ONE);
@@ -23,22 +23,22 @@ void kernelTests() {
     gate = Gate(-1);
     gate.output() = ONE;
     gate.input(0) = ZERO;
-    implied = imply(gate, tt);
+    imply(gate, tt, implied);
     assert(implied.input(1) == ONE);
 
     gate = Gate(-1);
     gate.input(0) = ZERO;
     gate.input(1) = ZERO;
-    implied = imply(gate, tt);
+    imply(gate, tt, implied);
     assert(implied.output() == ZERO);
 
     // We don't want any input pins to get assigned because of imply() on a PI gate
     gate = Gate(-1);
     gate.output() = ONE;
-    implied = imply(gate, pi_tt);
+    imply(gate, pi_tt, implied);
     assert(implied.input(0) == UNKNOWN);
     gate.output() = ZERO;
-    implied = imply(gate, pi_tt);
+    imply(gate, pi_tt, implied);
     assert(implied.input(0) == UNKNOWN);
 }
 
@@ -77,8 +77,8 @@ Propagate_loop:
         // CONFLICT CHECK and ASSIGN
         if (prop.direction == OUTWARDS) {
             (*major_propagation_count)++;
-            //cout << (*major_propagation_count) << " @ " << decision_level << " ";
-            //prop.print();
+            // cout << (*major_propagation_count) << " @ " << decision_level << " ";
+            // prop.print();
             if (conflictingAssign(PinValue(initial_state.output()), new_val)) {
                 conflict_occurred = true;
                 conflict.source_gate = g;
@@ -111,7 +111,7 @@ Propagate_loop:
         }
 
         // IMPLY (this can happen in parallel after ASSIGN as pin implications are independent)
-        implied_state = imply(assigned_gate_state, truth_tables[g]);
+        imply(assigned_gate_state, truth_tables[g], implied_state);
 
         // RECORD trail history and QUEUE propagations
         if (PinValue(initial_state.output()) != PinValue(implied_state.output())) {
@@ -124,7 +124,7 @@ Propagate_loop:
             level_assigned[g] = decision_level;
         Propagate_queueFanOut_loop:
             for (size_t i = 0; i < MAX_FANOUT; i++) {
-                #pragma HLS PIPELINE
+#pragma HLS PIPELINE
                 // preemptively skip originating gate if it was the antecedent (splinter blast)
                 if (prop.direction == OUTWARDS && GateID(nodes[g].outputs[i].gate) == from_gate) {
                     continue;

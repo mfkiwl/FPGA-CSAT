@@ -43,8 +43,7 @@ struct Masks {
 
 const static Masks<LUT_SIZE> MASKS;
 
-Gate imply(Gate pins, const TruthTable& tt) {
-    Gate implied_pins;
+void imply(Gate pins, const TruthTable& tt, Gate& implied_pins) {
     TruthTable mask = -1;  // all 1s
 
 // Mask out rows of the TT
@@ -89,8 +88,6 @@ imply_isUnate_loop:
             }
         }
     }
-
-    return implied_pins;
 }
 
 Gate imply_new(Gate pins, const TruthTable& tt) {
@@ -101,12 +98,12 @@ Gate imply_new(Gate pins, const TruthTable& tt) {
 imply_maskout_loop:
     for (unsigned int address_index = 0; address_index < TRUTH_TABLE_BITS; address_index++) {
 #pragma HLS unroll
-#pragma HLS dependence variable=mask type=inter false
+#pragma HLS dependence variable = mask type = inter false
         const ap_uint<LUT_SIZE> address = ap_uint<LUT_SIZE>(address_index);
         // For an address: if a bit differs from the pins in ANY place, it is masked
         for (unsigned int i = 0; i < LUT_SIZE; i++) {
 #pragma HLS unroll
-#pragma HLS dependence variable=mask type=inter false
+#pragma HLS dependence variable = mask type = inter false
             const PinValue pv = pins(2 * i + 1, 2 * i);
             if ((pv == ZERO && address.test(i)) || (pv == ONE && !address.test(i))) {
                 mask.set_bit(address, 1);
@@ -125,7 +122,7 @@ imply_maskout_loop:
 imply_isUnate_loop:
     for (unsigned int i = 0; i < LUT_SIZE; i++) {
 #pragma HLS unroll
-#pragma HLS dependence variable=implied_pins type=inter false
+#pragma HLS dependence variable = implied_pins type = inter false
         bool imply0 = true;
         bool imply1 = true;
         for (unsigned int address_index = 0; address_index < TRUTH_TABLE_BITS; address_index++) {
