@@ -18,3 +18,5 @@ constexpr unsigned int GATE_ID_BITS = 16;
 
 constexpr unsigned int OFFSET_BITS = ceillog2(LUT_SIZE + 1);
 constexpr unsigned int PROPAGATION_BITS = 2 + OFFSET_BITS + 2 * GATE_ID_BITS + 1;
+
+constexpr unsigned int CLAUSE_ID_BITS = 15;
