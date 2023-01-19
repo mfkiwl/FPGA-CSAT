@@ -60,11 +60,11 @@ bool isUnknown(const PinValue& pv) {
 
 ap_uint<1> to_polarity(const PinValue& pv) {
 #pragma HLS inline
-    assert(pv == ZERO || pv == ONE);
-    if (pv == ZERO) {
-        return ap_uint<1>(1);  // inverted polarity
+    assert(pv == kZero || pv == kOne);
+    if (pv == kZero) {
+        return ap_uint<1>(1);  // negative (inverted) polarity
     } else {
-        return ap_uint<1>(0);  // non-inverted polarity
+        return ap_uint<1>(0);  // positive (non-inverted) polarity
     }
 }
 }  // namespace pin_value
@@ -89,9 +89,9 @@ struct GateNode {
     sw::OutPin outputs[MAX_FANOUT];
 };
 
-struct Gate : ap_uint<2 * (LUT_SIZE + 1)> {
+struct Pins : ap_uint<2 * (LUT_SIZE + 1)> {
     using ap_uint<2 * (LUT_SIZE + 1)>::ap_uint;
-    ap_range_ref<width, false> input(Offset i) {
+    ap_range_ref<width, false> index(Offset i) {
         return this->range(2 * i + 1, 2 * i);
     }
     ap_range_ref<width, false> output() {
@@ -99,85 +99,42 @@ struct Gate : ap_uint<2 * (LUT_SIZE + 1)> {
     }
 };
 
-struct Pin {
-    bool isDECISION() {
-        return gate == DECISION;
-    }
-    bool isSELF() {
-        return gate == SELF;
-    }
-    bool isLEARNED() {
-        return gate == LEARNED;
-    }
-    GateID gate;
+struct Vertex {
+    GateID gate_id;
     Offset offset;
 };
 
-struct Propagation {
-    Propagation() {}
-    Propagation(GateID source, NodeID sink, Offset offset, Direction d, PinValue val) : source_gate(source), sink_node(sink), sink_offset(offset), direction(d), value(val) {}
-    GateID source_gate;
-    NodeID sink_node;
-    Offset sink_offset;
-    Direction direction;
+struct Assignment {
+    Assignment() : gate_id(gate_id::kNoConnect), value(0){};
+    Assignment(GateID gate_id, PinValue value) : gate_id(gate_id), value(value){};
+    GateID gate_id;
     PinValue value;
     void print() const {
-        if (direction == direction::kSourcewards) {
-            cout << "Sourcewards: " << sink_node << "[" << sink_offset << "] -> " << source_gate << " ( = " << value << " )" << endl;
-        } else {
-            cout << "Sinkwards: " << source_gate << " -> " << sink_node << "[" << sink_offset << "] ( = " << value << " )" << endl;
-        }
-    }
-};
-
-struct PinAssignment {
-    PinAssignment() {}
-    PinAssignment(GateID to, PinValue val) : to_gate(to), direction(direction::kSourcewards), value(val) {}
-    PinAssignment(GateID to, Offset offset, PinValue val) : to_gate(to), to_offset(offset), direction(direction::kSinkwards), value(val) {}
-    GateID to_gate;
-    Offset to_offset;
-    Direction direction;
-    PinValue value;
-    void print() const {
-        if (direction == direction::kSourcewards) {
-            cout << "Sourcewards: " << to_gate << " = " << value << endl;
-        } else {
-            cout << "Sinkwards: " << to_gate
-                 << "[" << to_offset << "] = " << value << endl;
-        }
-    }
-};
-
-struct Conflict {
-    GateID source_gate;
-    NodeID sink_node;
-    Offset sink_offset;  // Do we need this? Why?
-    void print() const {
-        cout << source_gate << " <-> " << sink_node[NodeID::width - 1] << " " << sink_node(NodeID::width - 2, 0) << "[" << sink_offset << "]" << endl;
+        cout << gate_id << " = " << value << endl;
     }
 };
 
 struct ArrayQueue {
     ArrayQueue(const uint32_t& num_gates) {
         head = 0;
-        array[0].backward = NO_CONNECT;
+        array[0].backward = gate_id::kNoConnect;
         for (unsigned int i = 0; i < num_gates - 1; i++) {
             array[i].forward = i + 1;
             array[i + 1].backward = i;
         }
-        array[num_gates - 1].forward = NO_CONNECT;
+        array[num_gates - 1].forward = gate_id::kNoConnect;
     };
     void bump(GateID g) {
         if (g != head) {
             // Detatch
             array[array[g].backward].forward = array[g].forward;
-            if (array[g].forward != NO_CONNECT) {
+            if (array[g].forward != gate_id::kNoConnect) {
                 array[array[g].forward].backward = array[g].backward;
             }
             // Queue at head
             array[head].backward = g;
             array[g].forward = head;
-            array[g].backward = NO_CONNECT;
+            array[g].backward = gate_id::kNoConnect;
             head = g;
         }
     };

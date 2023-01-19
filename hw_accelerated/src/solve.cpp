@@ -42,203 +42,85 @@ void kernelTests() {
     assert(implied.input(0) == UNKNOWN);
 }
 
-void printTrail(const PinAssignment trail[MAX_PINS], const uint32_t& trail_end) {
+void printTrail(const Assignment trail[MAX_GATES], const uint32_t& trail_end) {
     for (uint32_t i = 0; i < trail_end; i++) {
         cout << i << ": ";
         trail[i].print();
     }
 }
 
-void Queue(const Propagation& prop, Propagation propagation_queue[MAX_PROPAGATIONS], uint32_t& pq_end) {
-    propagation_queue[pq_end] = prop;
-    pq_end++;
-    assert(pq_end < MAX_PROPAGATIONS);
-}
-
-void Record(const PinAssignment& pa, PinAssignment trail[MAX_PINS], uint32_t& trail_end) {
-    trail[trail_end] = pa;
+void Enqueue(const Assignment& a, const NodeID& reason, PinValue assigns[MAX_GATES], NodeID antecedent[MAX_GATES], uint32_t level_assigned[MAX_GATES], const uint32_t decision_level, Assignment trail[MAX_GATES], uint32_t& trail_end) {
+#pragma HLS INLINE
+    assigns[a.gate_id] = a.value;
+    level_assigned[a.gate_id] = decision_level;
+    antecedent[a.gate_id] = reason;
+    trail[trail_end] = a;
     trail_end++;
 }
 
-void Propagate_new(const GateNode nodes[MAX_GATES], const uint32_t decision_level, const TruthTable truth_tables[MAX_GATES], Propagation propagation_queue[MAX_PROPAGATIONS], uint32_t& pq_end, uint32_t& gate_p, Gate circuit[MAX_GATES], PinAssignment trail[MAX_PINS], uint32_t& trail_end, uint32_t level_assigned[MAX_GATES], Pin antecedent[MAX_GATES], bool& conflict_occurred, Conflict& conflict, uint64_t* major_propagation_count, uint64_t* minor_propagation_count) {
-    // Ok so there is a trail of literals and we will step through this trial that we keep enqueing
+void Propagate(const Gate gates[MAX_GATES], const TruthTable truth_tables[MAX_GATES], Clause clauses[MAX_GATES], PinValue assigns[MAX_GATES], Assignment trail[MAX_GATES], uint32_t& trail_end, uint32_t& q_head, uint32_t level_assigned[MAX_GATES], NodeID antecedent[MAX_GATES], const uint32_t& decision_level, NodeID& conflict, uint64_t* major_propagation_count, uint64_t* minor_propagation_count) {
+    while (q_head < trail_end) {
+        const Assignment pa = trail[q_head];
 
-    while (t < trail_end) {
-        const PinAssignment pa = trail[t];
-        const GateID g = pa.to_gate;
-        const PinValue pv = pa.value;
+        // Loop through related gates
+        for (uint32_t i = 0; i < related_gates_counts[pa.gid]; i++) {
+            Vertex v = related_gates[pa.gid][i];  // maybe make this a monolithic array
+            const GateID gid = v.gate_id;
+            const Offset offset = v.gate_id;
+            const Gate g = gates[gid];
 
-        // Check for conflict
-        if (pin_value::isAssigned(val[g])) {
-            if (val[g] != pv) {
-                conflict_occurred = true;
-                conflict.sink_node = g;
-                break;
-            } else {
-                continue;  // No propagation needed!
+            // Collect assigns for g
+            Pins initial_pins;
+            for (Offset o = 0; o < LUT_SIZE + 1; o++) {
+                GateID edge = g.edges[o];
+                if (edge != gate_id::kNoConnect) {
+                    initial_pins.index(o) = assigns[edge];
+                }
             }
-        }
-
-        // Loop through connected gates
-        for(uint32_t i = 0; i < related_gates_counts[g]; i++) {
-            Vertex v = related_gates[g][i];
-
-            // Assign pv to v in circuit
-            circuit[v.gate]
 
             // Imply
+            Pins implied_pins;
+            imply(initial_pins, truth_tables[gid], implied_pins);
 
-            // Check for new implied values (offset must be different from v.offset).
-
-            // If there are any new implied values, look up the literal in attached edges and queue the assignment onto the trail
-
-            // If the new impplied value was the output (index LUT_SIZE), that literal is the same as the 
-
+            // Propagate new implications
+            for (Offset o = 0; o < LUT_SIZE + 1; o++) {
+                if (initial_pins.index(o) != implied_pins.index(o)) {
+                    if (pin_value::isAssigned(initial_pins.index(o))) {
+                        conflict = (node_type::kGate, gid);
+                        goto Finish;
+                    } else {
+                        // Enqueue
+                        const Assignment enqueue_assignment = {g.edges[o], implied_pins.index(o)};
+                        const NodeID enqueue_reason = (node_type::kGate, gid);
+                        Enqueue(enqueue_assignment, enqueue_reason, assigns, antecedent, level_assigned, decision_level, trail, trail_end);
+                    }
+                }
+            }
         }
-        
 
         // Loop through watched clauses
-
-        //
-    }
-}
-
-void PropagateThroughGates(const GateNode nodes[MAX_GATES], const uint32_t decision_level, const TruthTable truth_tables[MAX_GATES], Propagation propagation_queue[MAX_PROPAGATIONS], uint32_t& pq_end, uint32_t& gate_p, Gate circuit[MAX_GATES], PinAssignment trail[MAX_PINS], uint32_t& trail_end, uint32_t level_assigned[MAX_GATES], Pin antecedent[MAX_GATES], bool& conflict_occurred, Conflict& conflict, uint64_t* major_propagation_count, uint64_t* minor_propagation_count) {
-Propagate_loop:
-    while (gate_p < pq_end) {
-        const Propagation prop = propagation_queue[gate_p];
-        const GateID source_gate = prop.source_gate;
-        const NodeID sink_node = prop.sink_node;
-        const ap_uint<1> sink_node_type = sink_node[NodeID::width - 1];
-        const GateID sink_gate = GateID(sink_node);
-        const Offset sink_offset = prop.sink_offset;
-        const PinValue new_val = prop.value;
-
-        GateID g;
-
-        if (prop.direction == direction::kSourcewards) {
-            g = source_gate;
-        } else {
-            assert(sink_node_type == node_type::kGate);
-            g = sink_gate;
-        }
-
-        Gate initial_state = circuit[g];
-        Gate assigned_gate_state = initial_state;
-        Gate implied_state;
-
-        // CONFLICT CHECK and ASSIGN
-        if (prop.direction == direction::kSourcewards) {
-            (*major_propagation_count)++;
-            // cout << (*major_propagation_count) << " @ " << decision_level << " ";
-            // prop.print();
-            if (conflictingAssign(PinValue(initial_state.output()), new_val)) {
-                conflict_occurred = true;
-                conflict.source_gate = source_gate;
-                conflict.sink_node = sink_node;
-                conflict.sink_offset = sink_offset;
-                break;
-            }
-            /*
-            if (PinValue(initial_state.output()) == new_val) {
-                goto Next_Propagation;
-            }
-            */
-            assigned_gate_state.output() = new_val;
-        } else if (prop.direction == direction::kSinkwards) {
-            (*minor_propagation_count)++;
-            if (conflictingAssign(PinValue(initial_state.input(sink_offset)), new_val)) {
-                conflict_occurred = true;
-                conflict.source_gate = source_gate;
-                conflict.sink_node = sink_node;
-                conflict.sink_offset = sink_offset;
-                break;
-            }
-            /*
-            if (PinValue(initial_state.input(sink_offset)) == new_val) {
-                goto Next_Propagation;
-            }
-            */
-            assigned_gate_state.input(sink_offset) = new_val;
-        }
-
-        // IMPLY (this can happen in parallel after ASSIGN as pin implications are independent)
-        imply(assigned_gate_state, truth_tables[g], implied_state);
-
-        // RECORD trail history and QUEUE propagations
-        if (PinValue(initial_state.output()) != PinValue(implied_state.output())) {
-            Record(PinAssignment(g, PinValue(implied_state.output())), trail, trail_end);
-            if (prop.direction == direction::kSourcewards) {
-                antecedent[g] = {sink_node, sink_offset};
-            } else {
-                antecedent[g] = {node_id::kSelf, 0};
-            }
-            level_assigned[g] = decision_level;
-        Propagate_queueFanOut_loop:
-            for (size_t i = 0; i < MAX_FANOUT; i++) {
-#pragma HLS PIPELINE
-                if (GateID(nodes[g].outputs[i].gate) == gate_id::kNoConnect) {
-                    break;
-                }
-                // preemptively skip originating gate if it was the antecedent (prevent rebound - splinter blast)
-                if (prop.direction == direction::kSourcewards && sink_node_type == node_type::kGate && GateID(nodes[g].outputs[i].gate) == sink_gate) {
-                    continue;
-                }
-                Queue(Propagation(g, GateID(nodes[g].outputs[i].gate), Offset(nodes[g].outputs[i].offset), direction::kSinkwards, PinValue(implied_state.output())), propagation_queue, pq_end);
-            }
-        }
-    Propagate_queueFanIn_loop:
-        for (Offset i = 0; i < LUT_SIZE; i++) {
-            if (GateID(nodes[g].inputs[i]) == gate_id::kNoConnect) {
-                break;
-            }
-            if (PinValue(initial_state.input(i)) != PinValue(implied_state.input(i))) {
-                Record(PinAssignment(g, i, PinValue(implied_state.input(i))), trail, trail_end);
-                // preemptively skip originating gate if it was the antecedent (prevent rebound)
-                if (prop.direction == direction::kSinkwards && sink_offset == i) {
-                    continue;
-                }
-                Queue(Propagation(g, GateID(nodes[g].inputs[i]), i, direction::kSourcewards, PinValue(implied_state.input(i))), propagation_queue, pq_end);
-            }
-        }
-
-        // "Atomic" update
-        circuit[g] = implied_state;
-
-    Next_Propagation:
-        gate_p++;
-    }
-}
-
-void PropagateThroughClauses() {
-Propagate_loop:
-    while (clause_p < pq_end) {
-        const Propagation prop = propagation_queue[clause_p];
-        const ap_uint<1> polarity = (prop.value == ONE) ? 0 : 1;
-        const Literal falsified_literal = (prop.source_gate, polarity);
+        const ap_uint<1> polarity = pin_value::to_polarity(pa.value);
+        const Literal falsified_literal = (pa.gate_id, polarity);
         Watcher w = watcher_header[falsified_literal];
-
-        if (prop.direction == direction::kSinkwards) {
-            goto Next_Propagation;  // ignore CoherencyPropagations
-        }
+        bool conflict_occurred = false;
 
         watcher_header[falsified_literal] = watcher::kInvalid;  // detach the head
 
         while (w != watcher::kInvalid) {
             const ClauseID clause_id = w(Watcher::width - 1, 1);
             const ap_uint<1> w_index = w[0];
-            Clause clause = clause_table[clause_id];
+            Clause clause = clauses[clause_id];
             const Watcher next_watcher = clause.next_watcher[w_index];
             Literal literal_to_watch = falsified_literal;  // Keep watcher in list by default
 
             auto LiteralIsTrue = [&](const Literal& l) {
-                PinValue val = circuit[l(Literal::width - 1, 1)].output();
-                return (l.test(0) && val == ZERO) || (!l.test(0) && val == ONE);
+                PinValue val = assigns[l(Literal::width - 1, 1)];
+                return (l.test(0) && val == pin_value::kZero) || (!l.test(0) && val == pin_value::kOne);
             };
 
             auto LiteralIsFalse = [&](const Literal& l) {
-                PinValue val = circuit[l(Literal::width - 1, 1)].output();
-                return (l.test(0) && val == ONE) || (!l.test(0) && val == ZERO);
+                PinValue val = assigns[l(Literal::width - 1, 1)];
+                return (l.test(0) && val == pin_value::kOne) || (!l.test(0) && val == pin_value::kZero);
             };
 
             // Early termination (no search done)
@@ -265,73 +147,71 @@ Propagate_loop:
             // No swap found
             if (LiteralIsFalse(other_watched_literal)) {
                 // Conflict
+                conflict = NodeID(node_type::kClause, clause_id);
                 conflict_occurred = true;
-                conflict.source_gate = prop.source_gate;
-                conflict.sink_node = NodeID(node_type::kClause, clause_id);
-                conflict.sink_offset = w_index;
             } else {
-                // Propagate
-                GateID implied_gate = other_watched_literal(Literal::width - 1, 1);
-                PinValue implied_val = other_watched_literal.test(0) ? ZERO : ONE;
-                Queue(Propagation(implied_gate, NodeID(node_type::kClause, clause_id), ~w_index, direction::kSourcewards, implied_val), propagation_queue, pq_end);
+                // Enqueue
+                const GateID enqueue_gid = other_watched_literal(Literal::width - 1, 1);
+                const PinValue enqueue_val = other_watched_literal.test(0) ? pin_value::kZero : pin_value::kOne;
+
+                const Assignment enqueue_assignment = {enqueue_gid, enqueue_val};
+                const NodeID enqueue_reason = (node_type::kClause, clause_id);
+                Enqueue(enqueue_assignment, enqueue_reason, assigns, antecedent, level_assigned, decision_level, trail, trail_end);
             }
 
         Next_Watcher:
             // Prepend w to literal_to_watch's list
             clause.next_watcher[w_index] = watcher_header[literal_to_watch];
             watcher_header[literal_to_watch] = w;
-            clause_table[clause_id] = clause;  // update clause
+            clauses[clause_id] = clause;  // update clause
 
             w = next_watcher;
         }
 
-    Next_Propagation:
-        clause_p++;
-    }
-    return;
-}
-
-void Propagate(const GateNode nodes[MAX_GATES], const uint32_t decision_level, const TruthTable truth_tables[MAX_GATES], Propagation propagation_queue[MAX_PROPAGATIONS], uint32_t& pq_end, Gate circuit[MAX_GATES], PinAssignment trail[MAX_PINS], uint32_t& trail_end, uint32_t level_assigned[MAX_GATES], Pin antecedent[MAX_GATES], bool& conflict_occurred, Conflict& conflict, uint64_t* major_propagation_count, uint64_t* minor_propagation_count) {
-    uint32_t gate_p = 0;
-    uint32_t clause_p = 0;
-    while (gate_p < pq_end && !conflict_occurred) {
-        PropagateThroughGates(nodes, decision_level, truth_tables, propagation_queue, pq_end, gate_p, circuit, trail, trail_end, level_assigned, antecedent, conflict_occurred, conflict, major_propagation_count, minor_propagation_count);
-        PropagateThroughClauses();
-    }
-    pq_end = 0;
-}
-
-void ConflictAnalysis(const Conflict& conflict, const GateNode nodes[MAX_GATES], const PinAssignment trail[MAX_PINS], const uint32_t& trail_end, const uint32_t decision_level, const Pin antecedent[MAX_GATES], bool stamped[MAX_GATES][LUT_SIZE + 1], uint32_t level_assigned[MAX_GATES], ArrayQueue& VMTF_queue, uint32_t& backjump_level, uint32_t& UIP_step) {
-    static uint32_t conflict_id;
-
-    auto taintNode = [&](NodeID nid) {
-        if (nid[NodeID::width - 1] == node_type::kGate) {
-            taintGate(GateID(nid(NodeID::width - 2, 0)));
-        } else {
-            taintClause(ClauseID(nid(NodeID::width - 2, 0)));
+        if (conflict_occurred) {
+            break;
         }
-    };
+        t++;
+    }
+Finish:
+}
 
-    auto taintGate = [&](GateID gid) {
-        const GateNode g = gate_nodes[gid];
-        for (Offset i = 0; i < LUT_SIZE; i++) {
-            GateID gid = g.inputs[i];
-            if (stamp[gid] != conflict_id) {
-                if (level_assigned[gid] < decision_level) {
-                    backjump_level = max(backjump_level, level_assigned[gid]);
-                    learned_clause[lc_end] = pin_value::to_polarity(circuit[gid].output());
+void ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Clause clauses[MAX_LEARNED_CLAUSES], const PinValue assigns[MAX_GATES], const Assignment trail[MAX_GATES], const uint32_t& trail_end, const uint32_t decision_level, const NodeID antecedent[MAX_GATES], uint32_t stamps[MAX_GATES], uint32_t level_assigned[MAX_GATES], ArrayQueue& VMTF_queue, uint32_t& backjump_level, Assignment& correcting_assignment, NodeID& learnt_node_id) {
+    static uint16_t conflict_id = 0;
+
+    Literal uip = literal::kInvalid;
+    Clause learnt_clause;
+    uint8_t lc_end = 1;  // (leave room for the asserting literal)
+
+    uint32_t t = trail_end;
+    uint32_t needs_resolution_count = 0;
+    NodeID node_to_resolve = conflict;
+    backjump_level = 0;
+    uint16_t swap_index = 0;
+
+    auto resolveGate = [&](GateID gid) {
+        const Gate g = gates[gid];
+        for (Offset o = 0; o < LUT_SIZE + 1; o++) {
+            GateID edge = g.edges[o];
+            if (pin_value::isAssigned(assigns[edge]) && stamps[edge] != conflict_id && level_assigned[edge] != 0) {
+                Literal l;
+                l = (edge, pin_value::to_polarity(assigns[edge]));
+                if (level_assigned[edge] < decision_level) {
+                    if (level_assigned[edge] > backjump_level) {
+                        backjump_level = level_assigned[edge];
+                        swap_index = lc_end;
+                    }
+                    learnt_clause.literals[lc_end] = l;
                     lc_end++;
-                } else if (level_assigned[gid] == decision_level) {
-                    needs_resolution[gid] = true;
+                } else if (level_assigned[edge] == decision_level) {
                     needs_resolution_count++;
                 }
-                stamp[gid] = conflict_id;
+                stamps[edge] = conflict_id;
             }
         }
-        level_assigned[gate] = UNASSIGNED;
     };
 
-    auto taintClause = [&](ClauseID cid) {
+    auto resolveClause = [&](ClauseID cid) {
         const Clause clause = clauses[cid];
         for (uint32_t i; i < MAX_LITERALS_PER_CLAUSE; i++) {
             const Literal l = clause.literals[i];
@@ -339,114 +219,68 @@ void ConflictAnalysis(const Conflict& conflict, const GateNode nodes[MAX_GATES],
                 break;
             }
             GateID var = GateID(l(Literal::width - 1, 1));
-            if (stamp[var] != conflict_id) {
+            if (stamps[var] != conflict_id && level_assigned[var] != 0) {
                 if (level_assigned[var] < decision_level) {
-                    backjump_level = max(backjump_level, level_assigned[var]);
-                    learned_clause[lc_end] = l;
+                    if (level_assigned[var] > backjump_level) {
+                        backjump_level = level_assigned[var];
+                        swap_index = lc_end;
+                    }
+                    learnt_clause.literals[lc_end] = l;
                     lc_end++;
                 } else if (level_assigned[var] == decision_level) {
-                    needs_resolution[var] = true;
                     needs_resolution_count++;
                 }
-                stamp[var] = conflict_id;
+                stamps[var] = conflict_id;
             }
         }
     };
 
-    stamp[conflict.source_gate] = conflict_id;
-    needs_resolution[conflict.source_gate] = true;
-    uint32_t needs_resolution_count = 1;
+    auto resolveNode = [&](NodeID nid) {
+        if (nid[NodeID::width - 1] == node_type::kGate) {
+            resolveGate(GateID(nid(NodeID::width - 2, 0)));
+        } else {
+            resolveClause(ClauseID(nid(NodeID::width - 2, 0)));
+        }
+    };
 
-    if (conflict.sink_node[NodeID::width - 1] == node_type::kGate) {
-        stamp[GateID(conflict.sink_node(NodeID::width - 2, 0))] = conflict_id;
-        needs_resolution[GateID(conflict.sink_node(NodeID::width - 2, 0))] = true;
-        needs_resolution_count++;
-    } else {
-        taintClause(ClauseID(conflict.sink_node(NodeID::width - 2, 0)));
-    }
-
-    bool UIP_found = false;
 ConflictAnalysis_loop:
-    for (uint32_t t = trail_end - 1; UIP_found == false; t--) {
-        const PinAssignment& pa = trail[t];
-        if (needs_resolution[pa.to_gate]) {
-            VMTF_queue.bump(pa.to_gate);
-            Pin ante = antecedent[pa.to_gate];
-            if (pa.direction == direction::kSourcewards && needs_resolution_count == 1) {
-                // Check for 1-UIP only on major pins
-                UIP_step = t;
-                UIP_found = true;
-            } else if (pa.direction == INWARDS || ante.isSELF()) {
-                // Include gate in the conflict
-            ConflictAnalysis_include_loop:
-                for (Offset i = 0; i < LUT_SIZE; i++) {
-                    GateID major_pin = nodes[pa.to_gate].inputs[i];
-                    if (major_pin == NO_CONNECT) {
-                        break;
-                    }
-                    // Stamp pins assigned @d and collate the backjump_level
-                    if (level_assigned[major_pin] == decision_level) {
-                        if (stamped[major_pin][LUT_SIZE] == false) {
-                            stamped[major_pin][LUT_SIZE] = true;
-                            pins_stamped++;
-                        }
-                    } else if (level_assigned[major_pin] != UNASSIGNED) {
-                        backjump_level = max(backjump_level, level_assigned[major_pin]);
-                    }
-                }
-                // Do the same for the output pin
-                if (level_assigned[pa.to_gate] == decision_level) {
-                    if (stamped[pa.to_gate][LUT_SIZE] == false) {
-                        stamped[pa.to_gate][LUT_SIZE] = true;
-                        pins_stamped++;
-                    }
-                } else if (level_assigned[pa.to_gate] != UNASSIGNED) {
-                    backjump_level = max(backjump_level, level_assigned[pa.to_gate]);
-                }
-            } else if (ante.isDECISION()) {
-                backjump_level = max(backjump_level, level_assigned[pa.to_gate]);
-            } else if (ante.gate == LEARNED) {
-                if (level_assigned[pa.to_gate] == decision_level) {
-                    // Since we don't store the learned gate, if we need to include the learned gate in the conflict, the worse case would be the prior level
-                    backjump_level = decision_level - 1;
-                } else {
-                    backjump_level = max(backjump_level, level_assigned[pa.to_gate]);
-                }
-            } else {
-                stamped[ante.gate][ante.offset] = true;
-                pins_stamped++;
-            }
-            stamped[pa.to_gate][pin_index] = false;
-            pins_stamped--;
+    do {
+        assert(node_to_resolve != node_id::kDecision);  // otherwise we would have found UIP
+        resolveNode(node_to_resolve);
+        t--;  // t was at trail_end or the already resolved assignment
+        while (stamp[trail[t].gate_id] != conflict_id) {
+            t--;
         }
-        // unassign to prevent pins becoming irresolvably stamped (i.e. on a repeat visit)
-        if (pa.direction == OUTWARDS) {
-            level_assigned[pa.to_gate] = UNASSIGNED;
-        }
-    }
-    assert(pins_stamped == 0);
+        Assignment a = trail[t];
+        node_to_resolve = antecedent[a.gate_id];
+        needs_resolution_count--;
+    } while (needs_resolution_count > 0);
+
+    // Swap in the second watcher
+    Literal temp = learnt_clause[1];
+    learnt_clause[1] = learnt_clause[swap_index];
+    learnt_clause[swap_index] = temp;
+
+End:
+    conflict_id++;
 }
 
-void CancelUntil(const uint32_t& backtrack_step, const PinAssignment trail[MAX_PINS], uint32_t& trail_end, Gate circuit[MAX_GATES], uint32_t level_assigned[MAX_GATES]) {
+void CancelUntil(const uint32_t& backtrack_step, const Assignment trail[MAX_PINS], uint32_t& trail_end, PinValue assigns[MAX_GATES], uint32_t level_assigned[MAX_GATES]) {
 CancelUntil_loop:
     for (uint32_t t = trail_end - 1; t >= backtrack_step; t--) {
-        const PinAssignment& pa = trail[t];
-        if (pa.direction == direction::kSinkwards) {
-            circuit[pa.to_gate].output() = UNKNOWN;  // todo! Save Phase
-            level_assigned[pa.to_gate] = UNASSIGNED;
-        } else {
-            circuit[pa.to_gate].input(pa.to_offset) = UNKNOWN;
-        }
+        const GateID gid = trail[t].gate_id;
+        assigns[gid] = pin_value::kUnknown;  // todo! Save Phase
+        level_assigned[gid] = UNASSIGNED;
     }
     trail_end = backtrack_step;
 }
 
-bool PickBranching(ArrayQueue& VMTF_queue, GateID& VMTF_next_search, uint32_t level_assigned[MAX_GATES], Propagation& branching_prop) {
+bool PickBranching(ArrayQueue& VMTF_queue, GateID& VMTF_next_search, uint32_t level_assigned[MAX_GATES], Assignment& branching_assignment) {
     // Search for next unknown variable
 PickBranching_loop:
-    while (VMTF_next_search != NO_CONNECT) {
+    while (VMTF_next_search != gate_id::kNoConnect) {
         if (level_assigned[VMTF_next_search] == UNASSIGNED) {
-            branching_prop = Propagation(DECISION, VMTF_next_search, 0, direction::kSourcewards, ONE);
+            branching_assignment = Assignment(VMTF_next_search, pin_value::kOne);
             VMTF_next_search = VMTF_queue.array[VMTF_next_search].forward;
             return true;
         }
@@ -460,61 +294,50 @@ extern "C" {
     CSAT Solve Kernel
 
     Arguments:
-        nodes  (input)  --> graph nodes that compose the circuit
 
 */
 
-void solve(const GateNode nodes[MAX_GATES], const TruthTable truth_tables[MAX_GATES], const uint32_t num_gates, const uint32_t gate_to_satisfy, PinAssignment trail[MAX_PINS], bool* is_sat, uint32_t* conflict_count, uint32_t* decision_count, uint64_t* major_propagation_count, uint64_t* minor_propagation_count) {
+void solve(const Gate g_gates[MAX_GATES], const TruthTable g_truth_tables[MAX_GATES], const uint32_t num_gates, const uint32_t gate_to_satisfy, Assignment g_trail[MAX_GATES], bool* is_sat, uint32_t* conflict_count, uint32_t* decision_count, uint64_t* major_propagation_count, uint64_t* minor_propagation_count) {
 #pragma HLS INTERFACE mode = m_axi port = nodes
 #pragma HLS INTERFACE mode = m_axi port = truth_tables
 #pragma HLS INTERFACE mode = m_axi port = trail
 
-    uint32_t trail_end = 0;
-    static Propagation propagation_queue[MAX_PROPAGATIONS];
-    uint32_t pq_end = 0;
-    static Pin antecedent[MAX_GATES];
-    static uint32_t trail_lim[MAX_GATES];
-
+    static PinValue assigns[MAX_GATES];
     static uint32_t level_assigned[MAX_GATES];
-initialize_level_assigned:
-    for (unsigned int i = 0; i < MAX_GATES; i++) {
-        level_assigned[i] = UNASSIGNED;
-    }
+    static uint32_t stamps[MAX_GATES];
+    static Gate gates[MAX_GATES];
+    static TruthTable truth_tables[MAX_GATES];
 
-    static Gate circuit[MAX_GATES];
-initialize_circuit:
-    for (uint32_t i = 0; i < num_gates; i++) {
-        circuit[i] = Gate(-1);  // All UNKNOWN
+initialize_RAM:
+    for (unsigned int i = 0; i < MAX_GATES; i++) {
+        assigns[i] = pin_value::kUnknown;
+        level_assigned[i] = UNASSIGNED;
+        stamps[i] = -1;
+        gates[i] = g_gates[i];
+        truth_tables[i] = g_truth_tables[i];
     }
+    static Clause clauses[MAX_GATES];
+    static uint32_t trail_lim[MAX_GATES];
+    static Assignment trail[MAX_GATES];
+    uint32_t trail_end = 0;
+    uint32_t q_head = 0;
+    static NodeID antecedent[MAX_GATES];
 
     GateID VMTF_next_search = 0;
     static ArrayQueue VMTF_queue(num_gates);
     VMTF_queue = ArrayQueue(num_gates);
 
-    static bool stamped[MAX_GATES][LUT_SIZE + 1];
-initialize_stamped:
-    for (unsigned int i = 0; i < MAX_GATES; i++) {
-    initialize_stamped_sub:
-        for (unsigned int j = 0; j < LUT_SIZE + 1; j++) {
-            stamped[i][j] = false;
-        }
-    }
-
-    // static PinAssignment local_trail[MAX_LOCAL_TRAIL];  // !TODO Use burst write and reads with SRAM array to accelerate trail accesses
-
     // kernelTests();
 
     uint32_t decision_level = 0;
-
-    Queue(Propagation(gate_to_satisfy, node_id::kDecision, 0, direction::kSourcewards, ONE), propagation_queue, pq_end);
+    Enqueue(Assignment(GateID(gate_to_satisfy), pin_value::kOne), node_id::kDecision, assigns, antecedent, level_assigned, decision_level, trail, trail_end);
 
     cout << "Hello! Starting solve kernel LOOP. num_gates = " << num_gates << ". gate_to_satisfy = " << gate_to_satisfy << endl;
 solve_loop:
     while (true) {
-        bool conflict_occurred = false;
-        Conflict conflict;
-        Propagate(nodes, decision_level, truth_tables, propagation_queue, pq_end, circuit, trail, trail_end, level_assigned, antecedent, conflict_occurred, conflict, major_propagation_count, minor_propagation_count);
-        if (conflict_occurred) {
+        NodeID conflict = node_id::kDecision;
+        Propagate(gates, truth_tables, clauses, assigns, trail, trail_end, q_head, level_assigned, antecedent, decision_level, conflict, major_propagation_count, minor_propagation_count);
+        if (conflict != node_id::kDecision) {
             (*conflict_count)++;
             // cout << "Conflict occurred @ " << decision_level << endl;
             // cout << "conflict = ";
@@ -524,26 +347,28 @@ solve_loop:
                 *is_sat = false;
                 return;
             }
-            uint32_t backjump_level = 0;
-            uint32_t UIP_step;
-            ConflictAnalysis(conflict, nodes, trail, trail_end, decision_level, antecedent, stamped, level_assigned, VMTF_queue, backjump_level, UIP_step);
+            uint32_t backjump_level;
+            Assignment correcting_assignment;
+            NodeID learnt_node_id;
+            ConflictAnalysis(conflict, gates, clauses, assigns, trail, trail_end, decision_level, antecedent, stamps, level_assigned, VMTF_queue, backjump_level, correcting_assignment, learnt_node_id);
             VMTF_next_search = VMTF_queue.head;
 
             uint32_t backtrack_step = trail_lim[backjump_level];
-            CancelUntil(backtrack_step, trail, trail_end, circuit, level_assigned);
+            CancelUntil(backtrack_step, trail, trail_end, assigns, level_assigned);
             decision_level = backjump_level;
-            Queue(Propagation(trail[UIP_step].to_gate, node_id::kLearned, 0, direction::kSourcewards, invert(trail[UIP_step].value)), propagation_queue, pq_end);
+
+            Enqueue(correcting_assignment, learnt_node_id, assigns, antecedent, level_assigned, decision_level, trail, trail_end);
         } else {
             trail_lim[decision_level] = trail_end;
-            Propagation branching_prop;
-            if (!PickBranching(VMTF_queue, VMTF_next_search, level_assigned, branching_prop)) {
+            Assignment branching_assignment;
+            if (!PickBranching(VMTF_queue, VMTF_next_search, level_assigned, branching_assignment)) {
                 cout << "Kernel: SAT" << endl;
                 *is_sat = true;
                 return;
             }
             (*decision_count)++;
             decision_level++;
-            Queue(branching_prop, propagation_queue, pq_end);
+            Enqueue(branching_assignment, node_id::kDecision, assigns, antecedent, level_assigned, decision_level, trail, trail_end);
         }
     }
 }
