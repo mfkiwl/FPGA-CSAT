@@ -60,7 +60,6 @@ bool isUnknown(const PinValue& pv) {
 }
 
 ap_uint<1> to_polarity(const PinValue& pv) {
-#pragma HLS inline
     assert(pv == kZero || pv == kOne);
     if (pv == kZero) {
         return ap_uint<1>(1);  // negative (inverted) polarity
@@ -109,7 +108,7 @@ struct Assignment {
 };
 
 struct ArrayQueue {
-    ArrayQueue(const uint32_t& num_gates) {
+    ArrayQueue(const uint32_t num_gates) {
         head = 0;
         array[0].backward = gate_id::kNoConnect;
         for (unsigned int i = 0; i < num_gates - 1; i++) {

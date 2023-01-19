@@ -279,6 +279,12 @@ PickBranching_loop:
     return false;
 }
 
+void StoreTrail(const Assignment trail[MAX_GATES], Assignment g_trail[MAX_GATES]) {
+    for (GateID i = 0; i < MAX_GATES; i++) {
+        g_trail[i] = trail[i];
+    }
+}
+
 extern "C" {
 /*
     CSAT Solve Kernel
@@ -365,6 +371,7 @@ solve_loop:
             if (!PickBranching(VMTF_queue, VMTF_next_search, level_assigned, branching_assignment)) {
                 cout << "Kernel: SAT" << endl;
                 *is_sat = true;
+                StoreTrail(trail, g_trail);
                 return;
             }
             (*decision_count)++;

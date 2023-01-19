@@ -87,9 +87,11 @@ void Solver::_solve() {
     assert(encoder::validForHardware(graph));
 
     // static to avoid stack overflow
-    alignas(4096) static array<GateNode, MAX_GATES> nodes;
-    alignas(4096) static array<TruthTable, MAX_GATES> truth_tables;
-    alignas(4096) static array<PinAssignment, MAX_PINS> trail;
+    alignas(4096) static array<Gate, MAX_GATES> g_gates;
+    alignas(4096) static array<TruthTable, MAX_GATES> g_truth_tables;
+    alignas(4096) static array<OccurrenceIndex, MAX_GATES + 1> g_occurrence_header;
+    alignas(4096) static array<GateID, MAX_OCCURRENCES> g_occurrence_gids;
+    alignas(4096) static array<Assignment, MAX_GATES> g_trail;
 
     // Allocate Buffer in Global Memory
     is_sat = false;
@@ -97,60 +99,73 @@ void Solver::_solve() {
     decision_count = 0;
     major_propagation_count = 0;
     minor_propagation_count = 0;
-    OCL_CHECK(err, cl::Buffer nodes_buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(GateNode) * nodes.size(), nodes.data(), &err));
-    OCL_CHECK(err, cl::Buffer truth_tables_buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(TruthTable) * truth_tables.size(), truth_tables.data(), &err));
-    OCL_CHECK(err, cl::Buffer trail_buffer(context, CL_MEM_USE_HOST_PTR, sizeof(PinAssignment) * trail.size(), trail.data(), &err));
+    OCL_CHECK(err, cl::Buffer g_gates_buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(Gate) * g_gates.size(), g_gates.data(), &err));
+    OCL_CHECK(err, cl::Buffer g_truth_tables_buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(TruthTable) * g_truth_tables.size(), g_truth_tables.data(), &err));
+    OCL_CHECK(err, cl::Buffer g_occurrence_header_buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(OccurrenceIndex) * g_occurrence_header.size(), g_occurrence_header.data(), &err));
+    OCL_CHECK(err, cl::Buffer g_occurrence_gids_buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(GateID) * g_occurrence_gids.size(), g_occurrence_gids.data(), &err));
+
+    OCL_CHECK(err, cl::Buffer g_trail_buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_WRITE_ONLY, sizeof(Assignment) * g_trail.size(), g_trail.data(), &err));
     OCL_CHECK(err, cl::Buffer is_sat_buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_WRITE_ONLY, sizeof(is_sat), &is_sat, &err));
     OCL_CHECK(err, cl::Buffer conflict_count_buffer(context, CL_MEM_USE_HOST_PTR, sizeof(conflict_count), &conflict_count, &err));
     OCL_CHECK(err, cl::Buffer decision_count_buffer(context, CL_MEM_USE_HOST_PTR, sizeof(decision_count), &decision_count, &err));
     OCL_CHECK(err, cl::Buffer major_propagation_count_buffer(context, CL_MEM_USE_HOST_PTR, sizeof(major_propagation_count), &major_propagation_count, &err));
     OCL_CHECK(err, cl::Buffer minor_propagation_count_buffer(context, CL_MEM_USE_HOST_PTR, sizeof(minor_propagation_count), &minor_propagation_count, &err));
 
-    OCL_CHECK(err, err = solve_kernel.setArg(0, nodes_buffer));
-    OCL_CHECK(err, err = solve_kernel.setArg(1, truth_tables_buffer));
-    OCL_CHECK(err, err = solve_kernel.setArg(2, uint32_t(graph.nodes.size())));
-    OCL_CHECK(err, err = solve_kernel.setArg(3, graph.name_map.at(gate_to_satisfy)));
-    OCL_CHECK(err, err = solve_kernel.setArg(4, trail_buffer));
-    OCL_CHECK(err, err = solve_kernel.setArg(5, is_sat_buffer));
-    OCL_CHECK(err, err = solve_kernel.setArg(6, conflict_count_buffer));
-    OCL_CHECK(err, err = solve_kernel.setArg(7, decision_count_buffer));
-    OCL_CHECK(err, err = solve_kernel.setArg(8, major_propagation_count_buffer));
-    OCL_CHECK(err, err = solve_kernel.setArg(9, minor_propagation_count_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(0, g_gates_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(1, g_truth_tables_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(2, g_occurrence_header_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(3, g_occurrence_gids_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(4, uint32_t(graph.nodes.size())));
+    OCL_CHECK(err, err = solve_kernel.setArg(5, graph.name_map.at(gate_to_satisfy)));
+    OCL_CHECK(err, err = solve_kernel.setArg(6, g_trail_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(7, is_sat_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(8, conflict_count_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(9, decision_count_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(10, major_propagation_count_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(11, minor_propagation_count_buffer));
 
     // Initialize Arrays
-    for (unsigned int i = 0; i < graph.nodes.size(); i++) {
-        nodes[i] = GateNode(graph.nodes[i]);
-        string hex_prefixed_string = string("0x" + to_hex(graph.truth_tables[i]));  // Explicit prefix needed because ap_int_base will try to guess radix even if it is provided
-        truth_tables[i] = TruthTable(hex_prefixed_string.c_str());
+    for (GateID gid = 0; gid < graph.nodes.size(); gid++) {
+        g_gates[gid] = Gate(graph.nodes[gid], gid);
+        string hex_prefixed_string = string("0x" + to_hex(graph.truth_tables[gid]));  // Explicit prefix needed because ap_int_base will try to guess radix even if it is provided (i.e interpreting 0B10FF... as a binary literal)
+        g_truth_tables[gid] = TruthTable(hex_prefixed_string.c_str());
     }
 
+    OccurrenceIndex occ = 0;
+    for (GateID gid = 0; gid < graph.occurrence_tables.size(); gid++) {
+        g_occurrence_header[gid] = occ;
+        for (uint32_t i = 0; i < graph.occurrence_tables[gid].size(); i++) {
+            g_occurrence_gids[occ] = GateID(graph.occurrence_tables[gid][i]);
+            occ++;
+        }
+    }
+    g_occurrence_header[graph.occurrence_tables.size()] = occ;
+
     // Copy input data to device global memory
-    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({nodes_buffer, truth_tables_buffer, trail_buffer, is_sat_buffer, conflict_count_buffer, decision_count_buffer, major_propagation_count_buffer, minor_propagation_count_buffer}, 0));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({g_gates_buffer, g_truth_tables_buffer, g_trail_buffer, is_sat_buffer, conflict_count_buffer, decision_count_buffer, major_propagation_count_buffer, minor_propagation_count_buffer}, 0));
 
     // Launch the Kernel
     OCL_CHECK(err, err = q.enqueueTask(solve_kernel));
 
     // Copy Result from Device Global Memory to Host Local Memory
-    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({trail_buffer, is_sat_buffer, conflict_count_buffer, decision_count_buffer, major_propagation_count_buffer, minor_propagation_count_buffer}, CL_MIGRATE_MEM_OBJECT_HOST));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({g_trail_buffer, is_sat_buffer, conflict_count_buffer, decision_count_buffer, major_propagation_count_buffer, minor_propagation_count_buffer}, CL_MIGRATE_MEM_OBJECT_HOST));
     q.finish();
 
     // Extract PI assignments from trail
     satisfying_assignment.clear();
     uint32_t t = 0;
     while (satisfying_assignment.size() < graph.primary_inputs.size()) {
-        if (trail[t].direction == OUTWARDS && graph.nodes[trail[t].to_gate].is_PI) {
-            GateID g = trail[t].to_gate;
-            bool val;
-            if (trail[t].value == ONE) {
-                val = true;
-            } else if (trail[t].value == ZERO) {
-                val = false;
-            } else {
-                assert(0 && "non ONE/ZERO assignment in trail");
-            }
-            assert(satisfying_assignment.find(graph.gate_map[g]) == satisfying_assignment.end() && "duplicate PI assignment in trail");
-            satisfying_assignment.insert({graph.gate_map[g], val});
+        GateID gid = g_trail[t].gate_id;
+        bool val;
+        if (g_trail[t].value == pin_value::kOne) {
+            val = true;
+        } else if (g_trail[t].value == pin_value::kZero) {
+            val = false;
+        } else {
+            assert(0 && "non ONE/ZERO assignment in trail");
         }
+        assert(satisfying_assignment.find(graph.gate_map[gid]) == satisfying_assignment.end() && "duplicate PI assignment in trail");
+        satisfying_assignment.insert({graph.gate_map[gid], val});
         t++;
     }
 }

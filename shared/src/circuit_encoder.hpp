@@ -100,18 +100,15 @@ struct Graph {
     unordered_map<string, sw::GateID> name_map;
     unordered_map<sw::GateID, string> gate_map;
     uint32_t minor_pin_count;
+
+    vector<vector<sw::GateID>> occurrence_tables;
+    void generateOccurrenceTables();
 };
 
 bool validForHardware(const Graph& graph) {
     if (graph.nodes.size() > MAX_GATES) {
         cout << "MAX_GATES constraint not satisfied: " << graph.nodes.size() << " > " << MAX_GATES << endl;
         return false;
-    }
-    for (const auto& g : graph.nodes) {
-        if (g.outputs.size() > MAX_FANOUT) {
-            cout << "MAX_FANOUT constraint not satisfied: " << g.outputs.size() << " > " << MAX_FANOUT << endl;
-            return false;
-        }
     }
     return true;
 }
@@ -209,6 +206,22 @@ void parseEQN(string eqn_file_path, Graph& graph) {
         // Specify unused inputs as no-connect
         for (uint8_t offset = signal.inputs.size(); offset < LUT_SIZE; offset++) {
             graph.nodes[gate].inputs[offset] = sw::NO_CONNECT;
+        }
+    }
+    graph.generateOccurrenceTables();
+}
+
+void Graph::generateOccurrenceTables() {
+    occurrence_tables = vector<vector<sw::GateID>>(nodes.size());
+    for (uint32_t gid = 0; gid < nodes.size(); gid++) {
+        occurrence_tables[gid].push_back(gid);  // Each Gate's output is its own GateID
+    }
+
+    for (uint32_t gid = 0; gid < nodes.size(); gid++) {
+        for (uint8_t o = 0; o < LUT_SIZE; o++) {
+            if (nodes[gid].inputs[o] != sw::NO_CONNECT) {
+                occurrence_tables[nodes[gid].inputs[o]].push_back(gid);
+            }
         }
     }
 }
