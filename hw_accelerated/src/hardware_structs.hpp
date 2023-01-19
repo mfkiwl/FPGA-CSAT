@@ -8,6 +8,7 @@
 typedef ap_uint<TRUTH_TABLE_BITS> TruthTable;
 typedef ap_uint<GATE_ID_BITS> GateID;
 typedef ap_uint<OFFSET_BITS> Offset;
+typedef ap_uint<OCCURRENCE_BITS> OccurrenceIndex;
 typedef ap_uint<2> PinValue;
 typedef ap_uint<1> Direction;
 typedef ap_uint<CLAUSE_ID_BITS> ClauseID;
@@ -71,22 +72,15 @@ ap_uint<1> to_polarity(const PinValue& pv) {
 
 const uint32_t UNASSIGNED = -1;
 
-struct GateNode {
-    GateNode() {}
-    GateNode(sw::GateNode gn) {
-        for (size_t i = 0; i < LUT_SIZE; i++) {
-            inputs[i] = gn.inputs[i];
+struct Gate {
+    Gate(){};
+    Gate(const sw::GateNode& gn, const GateID& gid) {
+        for (Offset o = 0; o < LUT_SIZE; o++) {
+            edges[o] = gn.inputs[o];
         }
-        size_t i;
-        for (i = 0; i < gn.outputs.size(); i++) {
-            outputs[i] = gn.outputs[i];
-        }
-        for (; i < MAX_FANOUT; i++) {
-            outputs[i].gate = sw::NO_CONNECT;
-        }
+        edges[LUT_SIZE] = gid;
     }
-    uint32_t inputs[LUT_SIZE];
-    sw::OutPin outputs[MAX_FANOUT];
+    GateID edges[LUT_SIZE + 1];
 };
 
 struct Pins : ap_uint<2 * (LUT_SIZE + 1)> {
@@ -149,6 +143,13 @@ struct ArrayQueue {
 };
 
 struct Clause {
+    Clause() {
+        for (unsigned int i = 0; i < MAX_LITERALS_PER_CLAUSE; i++) {
+            literals[i] = literal::kInvalid;
+        }
+        next_watcher[0] = watcher::kInvalid;
+        next_watcher[1] = watcher::kInvalid;
+    }
     Literal literals[MAX_LITERALS_PER_CLAUSE];
     Watcher next_watcher[2];
 };

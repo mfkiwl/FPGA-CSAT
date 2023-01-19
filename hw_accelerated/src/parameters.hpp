@@ -10,13 +10,7 @@ static constexpr unsigned int ceillog2(unsigned int x) {
     return x == 1 ? 0 : floorlog2(x - 1) + 1;
 }
 
-constexpr unsigned int MAX_PINS = MAX_GATES * (1 + LUT_SIZE);
-constexpr unsigned int MAX_PROPAGATIONS = 4096;
-constexpr unsigned int MAX_LOCAL_TRAIL = MAX_PROPAGATIONS * (1 + LUT_SIZE);
-
-constexpr unsigned int GATE_ID_BITS = 16;
-
+constexpr unsigned int GATE_ID_BITS = ceillog2(MAX_GATES);
+constexpr unsigned int CLAUSE_ID_BITS = ceillog2(MAX_LEARNED_CLAUSES);
 constexpr unsigned int OFFSET_BITS = ceillog2(LUT_SIZE + 1);
-constexpr unsigned int PROPAGATION_BITS = 2 + OFFSET_BITS + 2 * GATE_ID_BITS + 1;
-
-constexpr unsigned int CLAUSE_ID_BITS = 15;
+constexpr unsigned int OCCURRENCE_BITS = ceillog2(MAX_OCCURRENCES + 1);  // +1 for the end occurrence index
