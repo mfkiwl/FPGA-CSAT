@@ -161,16 +161,18 @@ void Solver::_solve() {
     uint32_t t = 0;
     while (satisfying_assignment.size() < graph.primary_inputs.size()) {
         GateID gid = g_trail[t].gate_id;
-        bool val;
-        if (g_trail[t].value == pin_value::kOne) {
-            val = true;
-        } else if (g_trail[t].value == pin_value::kZero) {
-            val = false;
-        } else {
-            assert(0 && "non ONE/ZERO assignment in trail");
+        if (graph.nodes[gid].is_PI) {
+            bool val;
+            if (g_trail[t].value == pin_value::kOne) {
+                val = true;
+            } else if (g_trail[t].value == pin_value::kZero) {
+                val = false;
+            } else {
+                assert(0 && "non ONE/ZERO assignment in trail");
+            }
+            assert(satisfying_assignment.find(graph.gate_map[gid]) == satisfying_assignment.end() && "duplicate PI assignment in trail");
+            satisfying_assignment.insert({graph.gate_map[gid], val});
         }
-        assert(satisfying_assignment.find(graph.gate_map[gid]) == satisfying_assignment.end() && "duplicate PI assignment in trail");
-        satisfying_assignment.insert({graph.gate_map[gid], val});
         t++;
     }
 }
