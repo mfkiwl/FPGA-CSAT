@@ -14,6 +14,7 @@ void printTrail(const Assignment trail[MAX_GATES], const uint32_t& trail_end) {
 
 void Enqueue(const Assignment& a, const NodeID& reason, PinValue assigns[MAX_GATES], NodeID antecedent[MAX_GATES], uint32_t level_assigned[MAX_GATES], const uint32_t decision_level, Assignment trail[MAX_GATES], uint32_t& trail_end) {
 #pragma HLS INLINE
+    cout << "Enqueue " << a.gate_id.to_string(10) << " = " << a.value.to_string(2) << endl;
     assigns[a.gate_id] = a.value;
     level_assigned[a.gate_id] = decision_level;
     antecedent[a.gate_id] = reason;
@@ -21,13 +22,16 @@ void Enqueue(const Assignment& a, const NodeID& reason, PinValue assigns[MAX_GAT
     trail_end++;
 }
 
-void Propagate(const Gate gates[MAX_GATES], const TruthTable truth_tables[MAX_GATES], const OccurrenceIndex occurrence_header[MAX_GATES + 1], const GateID occurrence_gids[MAX_OCCURRENCES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_GATES], PinValue assigns[MAX_GATES], Assignment trail[MAX_GATES], uint32_t& trail_end, uint32_t& q_head, uint32_t level_assigned[MAX_GATES], NodeID antecedent[MAX_GATES], const uint32_t& decision_level, NodeID& conflict, uint64_t* major_propagation_count, uint64_t* minor_propagation_count) {
+void Propagate(const Gate gates[MAX_GATES], const TruthTable truth_tables[MAX_GATES], const OccurrenceIndex occurrence_header[MAX_GATES + 1], const GateID occurrence_gids[MAX_OCCURRENCES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_GATES], PinValue assigns[MAX_GATES], Assignment trail[MAX_GATES], uint32_t& trail_end, uint32_t& q_head, uint32_t level_assigned[MAX_GATES], NodeID antecedent[MAX_GATES], const uint32_t& decision_level, NodeID& conflict, uint64_t* const propagation_count, uint64_t* const imply_count) {
     bool conflict_occurred = false;
     while (q_head < trail_end) {
         const Assignment pa = trail[q_head++];
+        (*propagation_count)++;
+        cout << "Propagating " << pa.gate_id.to_string(10) << endl;
 
         // Loop through related gates
         for (OccurrenceIndex i = occurrence_header[pa.gate_id]; i < occurrence_header[pa.gate_id + 1]; i++) {
+            (*imply_count)++;
             const GateID gid = occurrence_gids[i];
             const Gate g = gates[gid];
 
@@ -37,6 +41,8 @@ void Propagate(const Gate gates[MAX_GATES], const TruthTable truth_tables[MAX_GA
                 GateID edge = g.edges[o];
                 if (edge != gate_id::kNoConnect) {
                     initial_pins.index(o) = assigns[edge];
+                } else {
+                    initial_pins.index(o) = pin_value::kUnknown;  // overkill, but primary input nodes need x[0] to be unknown so nothing gets implied
                 }
             }
 
@@ -44,9 +50,11 @@ void Propagate(const Gate gates[MAX_GATES], const TruthTable truth_tables[MAX_GA
             Pins implied_pins;
             imply(initial_pins, truth_tables[gid], implied_pins);
 
+            cout << "Imply " << gid.to_string(10) << ": " << initial_pins.to_string(2) << " -> " << implied_pins.to_string(2) << " with tt = " << truth_tables[gid].to_string(16) << endl;
+
             // Propagate new implications
             for (Offset o = 0; o < LUT_SIZE + 1; o++) {
-                if (initial_pins.index(o) != implied_pins.index(o)) {
+                if (pin_value::isAssigned(implied_pins.index(o)) && (initial_pins.index(o) != implied_pins.index(o))) {
                     if (pin_value::isAssigned(initial_pins.index(o))) {
                         conflict = (node_type::kGate, gid);
                         conflict_occurred = true;
@@ -80,6 +88,8 @@ void Propagate(const Gate gates[MAX_GATES], const TruthTable truth_tables[MAX_GA
             Clause clause = clauses[clause_id];
             const Watcher next_watcher = clause.next_watcher[w_index];
             Literal literal_to_watch = falsified_literal;  // Keep watcher in list by default
+
+            cout << "Visiting Clause " << clause_id.to_string(10) << endl;
 
             auto LiteralIsTrue = [&](const Literal& l) {
                 PinValue val = assigns[l(Literal::width - 1, 1)];
@@ -280,7 +290,7 @@ PickBranching_loop:
 }
 
 void StoreTrail(const Assignment trail[MAX_GATES], Assignment g_trail[MAX_GATES]) {
-    for (GateID i = 0; i < MAX_GATES; i++) {
+    for (unsigned int i = 0; i < MAX_GATES; i++) {
         g_trail[i] = trail[i];
     }
 }
@@ -293,7 +303,7 @@ extern "C" {
 
 */
 
-void solve(const Gate g_gates[MAX_GATES], const TruthTable g_truth_tables[MAX_GATES], const OccurrenceIndex g_occurrence_header[MAX_GATES + 1], const GateID g_occurrence_gids[MAX_OCCURRENCES], const uint32_t num_gates, const uint32_t gate_to_satisfy, Assignment g_trail[MAX_GATES], bool* is_sat, uint32_t* conflict_count, uint32_t* decision_count, uint64_t* major_propagation_count, uint64_t* minor_propagation_count) {
+void solve(const Gate g_gates[MAX_GATES], const TruthTable g_truth_tables[MAX_GATES], const OccurrenceIndex g_occurrence_header[MAX_GATES + 1], const GateID g_occurrence_gids[MAX_OCCURRENCES], const uint32_t num_gates, const uint32_t gate_to_satisfy, Assignment g_trail[MAX_GATES], bool* is_sat, uint32_t* const conflict_count, uint32_t* const decision_count, uint64_t* const propagation_count, uint64_t* const imply_count) {
 #pragma HLS INTERFACE mode = m_axi port = nodes
 #pragma HLS INTERFACE mode = m_axi port = truth_tables
 #pragma HLS INTERFACE mode = m_axi port = trail
@@ -342,12 +352,11 @@ initialize_RAM:
 solve_loop:
     while (true) {
         NodeID conflict = node_id::kDecision;
-        Propagate(gates, truth_tables, occurrence_header, occurrence_gids, watcher_header, clauses, assigns, trail, trail_end, q_head, level_assigned, antecedent, decision_level, conflict, major_propagation_count, minor_propagation_count);
+        Propagate(gates, truth_tables, occurrence_header, occurrence_gids, watcher_header, clauses, assigns, trail, trail_end, q_head, level_assigned, antecedent, decision_level, conflict, propagation_count, imply_count);
         if (conflict != node_id::kDecision) {
             (*conflict_count)++;
-            // cout << "Conflict occurred @ " << decision_level << endl;
-            // cout << "conflict = ";
-            // conflict.print();
+            cout << "Conflict occurred @ " << decision_level << endl;
+            cout << "conflict = " << conflict[NodeID::width - 1] << " " << conflict(NodeID::width - 2, 0).to_string(10) << endl;
             if (decision_level == 0) {
                 cout << "Kernel: UNSAT" << endl;
                 *is_sat = false;

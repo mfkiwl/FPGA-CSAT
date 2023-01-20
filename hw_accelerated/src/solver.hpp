@@ -24,8 +24,8 @@ class Solver {
     alignas(4096) bool is_sat;
     alignas(4096) uint32_t conflict_count;
     alignas(4096) uint32_t decision_count;
-    alignas(4096) uint64_t major_propagation_count;
-    alignas(4096) uint64_t minor_propagation_count;
+    alignas(4096) uint64_t propagation_count;
+    alignas(4096) uint64_t imply_count;
     unordered_map<string, bool> satisfying_assignment;
     std::chrono::milliseconds duration;
 
@@ -85,6 +85,7 @@ void Solver::_solve() {
 
     parseEQN(eqn_file_path, graph);
     assert(encoder::validForHardware(graph));
+    assert(graph.name_map.find(gate_to_satisfy) != graph.name_map.end());
 
     // static to avoid stack overflow
     alignas(4096) static array<Gate, MAX_GATES> g_gates;
@@ -97,8 +98,8 @@ void Solver::_solve() {
     is_sat = false;
     conflict_count = 0;
     decision_count = 0;
-    major_propagation_count = 0;
-    minor_propagation_count = 0;
+    propagation_count = 0;
+    imply_count = 0;
     OCL_CHECK(err, cl::Buffer g_gates_buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(Gate) * g_gates.size(), g_gates.data(), &err));
     OCL_CHECK(err, cl::Buffer g_truth_tables_buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(TruthTable) * g_truth_tables.size(), g_truth_tables.data(), &err));
     OCL_CHECK(err, cl::Buffer g_occurrence_header_buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(OccurrenceIndex) * g_occurrence_header.size(), g_occurrence_header.data(), &err));
@@ -108,8 +109,8 @@ void Solver::_solve() {
     OCL_CHECK(err, cl::Buffer is_sat_buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_WRITE_ONLY, sizeof(is_sat), &is_sat, &err));
     OCL_CHECK(err, cl::Buffer conflict_count_buffer(context, CL_MEM_USE_HOST_PTR, sizeof(conflict_count), &conflict_count, &err));
     OCL_CHECK(err, cl::Buffer decision_count_buffer(context, CL_MEM_USE_HOST_PTR, sizeof(decision_count), &decision_count, &err));
-    OCL_CHECK(err, cl::Buffer major_propagation_count_buffer(context, CL_MEM_USE_HOST_PTR, sizeof(major_propagation_count), &major_propagation_count, &err));
-    OCL_CHECK(err, cl::Buffer minor_propagation_count_buffer(context, CL_MEM_USE_HOST_PTR, sizeof(minor_propagation_count), &minor_propagation_count, &err));
+    OCL_CHECK(err, cl::Buffer propagation_count_buffer(context, CL_MEM_USE_HOST_PTR, sizeof(propagation_count), &propagation_count, &err));
+    OCL_CHECK(err, cl::Buffer imply_count_buffer(context, CL_MEM_USE_HOST_PTR, sizeof(imply_count), &imply_count, &err));
 
     OCL_CHECK(err, err = solve_kernel.setArg(0, g_gates_buffer));
     OCL_CHECK(err, err = solve_kernel.setArg(1, g_truth_tables_buffer));
@@ -121,8 +122,8 @@ void Solver::_solve() {
     OCL_CHECK(err, err = solve_kernel.setArg(7, is_sat_buffer));
     OCL_CHECK(err, err = solve_kernel.setArg(8, conflict_count_buffer));
     OCL_CHECK(err, err = solve_kernel.setArg(9, decision_count_buffer));
-    OCL_CHECK(err, err = solve_kernel.setArg(10, major_propagation_count_buffer));
-    OCL_CHECK(err, err = solve_kernel.setArg(11, minor_propagation_count_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(10, propagation_count_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(11, imply_count_buffer));
 
     // Initialize Arrays
     for (GateID gid = 0; gid < graph.nodes.size(); gid++) {
@@ -142,14 +143,18 @@ void Solver::_solve() {
     g_occurrence_header[graph.occurrence_tables.size()] = occ;
 
     // Copy input data to device global memory
-    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({g_gates_buffer, g_truth_tables_buffer, g_trail_buffer, is_sat_buffer, conflict_count_buffer, decision_count_buffer, major_propagation_count_buffer, minor_propagation_count_buffer}, 0));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({g_gates_buffer, g_truth_tables_buffer, g_trail_buffer, is_sat_buffer, conflict_count_buffer, decision_count_buffer, propagation_count_buffer, imply_count_buffer}, 0));
 
     // Launch the Kernel
     OCL_CHECK(err, err = q.enqueueTask(solve_kernel));
 
     // Copy Result from Device Global Memory to Host Local Memory
-    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({g_trail_buffer, is_sat_buffer, conflict_count_buffer, decision_count_buffer, major_propagation_count_buffer, minor_propagation_count_buffer}, CL_MIGRATE_MEM_OBJECT_HOST));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({g_trail_buffer, is_sat_buffer, conflict_count_buffer, decision_count_buffer, propagation_count_buffer, imply_count_buffer}, CL_MIGRATE_MEM_OBJECT_HOST));
     q.finish();
+
+    if (!is_sat) {
+        return;
+    }
 
     // Extract PI assignments from trail
     satisfying_assignment.clear();
@@ -174,14 +179,14 @@ void Solver::printSummary() {
     cout << eqn_file_path << endl;
     cout << "SAT? = " << is_sat << endl;
     cout << duration.count() << "ms" << endl;
-    cout << graph.nodes.size() << " nodes (major pins)." << endl;
-    cout << graph.minor_pin_count << " minor pins." << endl;
+    cout << graph.nodes.size() << " nodes." << endl;
+    cout << graph.total_occurrences << " total occurrences." << endl;
     cout << graph.primary_inputs.size() << " primary inputs read." << endl;
     cout << graph.primary_outputs.size() << " primary outputs read." << endl;
     cout << conflict_count << " conflicts occurred." << endl;
     cout << decision_count << " decisions occurred." << endl;
-    cout << major_propagation_count << " major propagations occurred." << endl;
-    cout << minor_propagation_count << " minor propagations occurred." << endl;
+    cout << propagation_count << " propagations occurred." << endl;
+    cout << imply_count << " imply calls." << endl;
 }
 
 void Solver::logSummary(string log_file_path) {
@@ -193,7 +198,7 @@ void Solver::logSummary(string log_file_path) {
     // Write Header for new log files
     if (!fileExists(log_file_path)) {
         ofstream log(log_file_path);
-        log << "path,SAT?,duration(ms),nodes (major pins),minor pins,primary inputs read,primary outputs read,conflicts occurred,decisions occurred,major propagations occurred,minor propagations occurred" << endl;
+        log << "path,SAT?,duration(ms),nodes,total occurrences,primary inputs read,primary outputs read,conflicts occurred,decisions occurred,propagations occurred,imply calls" << endl;
         log.close();
     }
 
@@ -203,13 +208,13 @@ void Solver::logSummary(string log_file_path) {
     log << is_sat << ",";
     log << duration.count() << ",";
     log << graph.nodes.size() << ",";
-    log << graph.minor_pin_count << ",";
+    log << graph.total_occurrences << ",";
     log << graph.primary_inputs.size() << ",";
     log << graph.primary_outputs.size() << ",";
     log << conflict_count << ",";
     log << decision_count << ",";
-    log << major_propagation_count << ",";
-    log << minor_propagation_count << endl;
+    log << propagation_count << ",";
+    log << imply_count << endl;
 }
 
 void Solver::writeTestbench() {

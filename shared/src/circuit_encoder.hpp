@@ -99,7 +99,7 @@ struct Graph {
     vector<string> primary_outputs;
     unordered_map<string, sw::GateID> name_map;
     unordered_map<sw::GateID, string> gate_map;
-    uint32_t minor_pin_count;
+    uint32_t total_occurrences;
 
     vector<vector<sw::GateID>> occurrence_tables;
     void generateOccurrenceTables();
@@ -170,7 +170,6 @@ void parseEQN(string eqn_file_path, Graph& graph) {
     graph.truth_tables.resize(signals.size());
     graph.primary_inputs = primary_inputs;
     graph.primary_outputs = primary_outputs;
-    graph.minor_pin_count = 0;
     graph.name_map = name_map;
     for (const auto& p : name_map) {
         graph.gate_map.insert(std::make_pair(p.second, p.first));
@@ -199,7 +198,6 @@ void parseEQN(string eqn_file_path, Graph& graph) {
             sw::GateID predecessor = name_map.at(signal.inputs[offset]);
 
             graph.nodes[predecessor].outputs.push_back(pin);
-            graph.minor_pin_count++;
             graph.nodes[gate].inputs[offset] = (predecessor);
         }
 
@@ -212,15 +210,18 @@ void parseEQN(string eqn_file_path, Graph& graph) {
 }
 
 void Graph::generateOccurrenceTables() {
+    total_occurrences = 0;
     occurrence_tables = vector<vector<sw::GateID>>(nodes.size());
     for (uint32_t gid = 0; gid < nodes.size(); gid++) {
         occurrence_tables[gid].push_back(gid);  // Each Gate's output is its own GateID
+        total_occurrences++;
     }
 
     for (uint32_t gid = 0; gid < nodes.size(); gid++) {
         for (uint8_t o = 0; o < LUT_SIZE; o++) {
             if (nodes[gid].inputs[o] != sw::NO_CONNECT) {
                 occurrence_tables[nodes[gid].inputs[o]].push_back(gid);
+                total_occurrences++;
             }
         }
     }
