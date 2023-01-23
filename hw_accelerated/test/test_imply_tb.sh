@@ -1,1 +1,0 @@
-vivado -nolog -nojournal -mode tcl -source run_tb.tcl

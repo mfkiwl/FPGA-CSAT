@@ -1,1 +1,1 @@
-vivado -nolog -nojournal -mode tcl -source run.tcl
+vivado -nolog -nojournal -mode tcl -source test_imply.tcl

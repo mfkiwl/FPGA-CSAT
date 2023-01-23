@@ -1,4 +1,4 @@
-# This should test Conflict Analysis. a must be zero, but we don't learn that until d is assigned both ways.
+# This should test Conflict Analysis. if a == 1, then d == 0, but we don't learn that until d gets assigned 1.
 INORDER = a b c d e;
 OUTORDER = z;
 n0 = (e * (a + !d) * (!a + d)) + (!e * ((!a * d) + (a * !d)));
