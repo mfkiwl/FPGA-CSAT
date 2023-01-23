@@ -192,7 +192,7 @@ void ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watch
             if (pin_value::isAssigned(assigns[edge]) && stamps[edge] != conflict_id && level_assigned[edge] != 0) {
                 VMTF_queue.bump(edge);
                 Literal l;
-                l = (edge, pin_value::to_polarity(assigns[edge]));
+                l = (edge, ~pin_value::to_polarity(assigns[edge]));  // falsified
                 if (level_assigned[edge] < decision_level) {
                     if (level_assigned[edge] > backjump_level) {
                         backjump_level = level_assigned[edge];
@@ -214,7 +214,8 @@ void ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watch
     auto resolveClause = [&](ClauseID cid) {
         cout << "\tResolving Clause " << cid.to_string(10) << endl;
         const Clause clause = clauses[cid];
-        for (uint32_t i; i < MAX_LITERALS_PER_CLAUSE; i++) {
+        clause.print();
+        for (uint32_t i = 0; i < MAX_LITERALS_PER_CLAUSE; i++) {
             const Literal l = clause.literals[i];
             if (l == literal::kInvalid) {
                 break;
