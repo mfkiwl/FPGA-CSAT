@@ -1,15 +1,16 @@
 `timescale 100ps/100ps
 
-module imply(pins, tt, implied_pins, ap_clk, ap_rst, ap_ce, ap_start, ap_continue, ap_idle, ap_done, ap_ready);
-    parameter LUT_SIZE = 12;
+module imply(pins, tt, implied_pins, conflict, ap_clk, ap_rst, ap_ce, ap_start, ap_continue, ap_idle, ap_done, ap_ready);
+    parameter LUT_SIZE = 8;
     parameter TRUTH_TABLE_BITS = 1 << LUT_SIZE;
     parameter [1:0] ZERO = 2'b00;
-    parameter [1:0] ONE = 2'b10;
+    parameter [1:0] ONE = 2'b01;
     parameter [1:0] UNKNOWN = 2'b11;
 
     input [2*LUT_SIZE + 1:0] pins;
     input [TRUTH_TABLE_BITS - 1:0] tt;
     output [2*LUT_SIZE + 1:0] implied_pins;
+    output conflict;
 
     input ap_clk, ap_rst, ap_ce, ap_start, ap_continue;
     output ap_idle, ap_done, ap_ready;
@@ -32,6 +33,7 @@ module imply(pins, tt, implied_pins, ap_clk, ap_rst, ap_ce, ap_start, ap_continu
     end
 
     computeOutputImpliedPin #(.TRUTH_TABLE_BITS(TRUTH_TABLE_BITS), .ZERO(ZERO), .ONE(ONE), .UNKNOWN(UNKNOWN)) op (.mask(mask), .tt(tt), .output_implied_pin(implied_pins[2*LUT_SIZE + 1 : 2*LUT_SIZE]));
+    assign conflict = (&mask);
 
     assign ap_ready  = dly1;
     assign ap_done   = dly1;
@@ -42,7 +44,7 @@ endmodule
 module computeMask(pins, tt_bit, mask_bit);
     parameter LUT_SIZE = 8;
     parameter [1:0] ZERO = 2'b00;
-    parameter [1:0] ONE = 2'b10;
+    parameter [1:0] ONE = 2'b01;
 
     parameter [LUT_SIZE - 1 : 0] address = 0;
 
@@ -80,7 +82,7 @@ endmodule
 module computeInputImpliedPin(mask, input_implied_pin);
     parameter TRUTH_TABLE_BITS = 256;
     parameter [1:0] ZERO = 2'b00;
-    parameter [1:0] ONE = 2'b10;
+    parameter [1:0] ONE = 2'b01;
     parameter [1:0] UNKNOWN = 2'b11;
 
     parameter integer pin_index = 0;
@@ -122,7 +124,7 @@ endmodule
 module computeOutputImpliedPin(mask, tt, output_implied_pin);
     parameter TRUTH_TABLE_BITS = 256;
     parameter [1:0] ZERO = 2'b00;
-    parameter [1:0] ONE = 2'b10;
+    parameter [1:0] ONE = 2'b01;
     parameter [1:0] UNKNOWN = 2'b11;
 
     input [TRUTH_TABLE_BITS - 1 : 0] mask;

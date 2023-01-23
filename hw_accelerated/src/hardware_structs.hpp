@@ -16,6 +16,8 @@ typedef ap_uint<CLAUSE_ID_BITS + 1> Watcher;
 typedef ap_uint<GATE_ID_BITS + 1> Literal;
 typedef ap_uint<max(GATE_ID_BITS, CLAUSE_ID_BITS) + 1> NodeID;
 
+void printLiteral(const Literal& l);
+
 namespace node_type {
 const ap_uint<1> kGate = 0;
 const ap_uint<1> kClause = 1;
@@ -154,15 +156,29 @@ struct Clause {
 
     void print() const {
         cout << "{ ";
-        for(unsigned int i = 0; i < MAX_LITERALS_PER_CLAUSE; i++) {
+        for (unsigned int i = 0; i < MAX_LITERALS_PER_CLAUSE; i++) {
             const Literal l = literals[i];
-            if(l != literal::kInvalid) {
-                if(l.test(0)) {
-                    cout << "~";
-                }
-                cout << l(Literal::width-1, 1).to_string(10) << " ";
+            if (l != literal::kInvalid) {
+                printLiteral(l);
             }
         }
         cout << "} " << endl;
     }
 };
+
+ostream& operator<<(ostream& stream, const NodeID& nid) {
+    if (nid[NodeID::width - 1] == node_type::kGate) {
+        stream << "Gate-";
+    } else {
+        stream << "Clause-";
+    }
+    stream << nid(NodeID::width - 2, 0).to_string(10);
+    return stream;
+}
+
+void printLiteral(const Literal& l) {
+    if (l.test(0)) {
+        cout << "~";
+    }
+    cout << l(Literal::width - 1, 1).to_string(10) << " ";
+}

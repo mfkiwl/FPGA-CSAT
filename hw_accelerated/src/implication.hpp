@@ -13,7 +13,7 @@ PinValue invert(const PinValue& x) {
     }
 }
 
-/* Generates all nth varariable truth tables, as well as their inverse
+/* Generates all nth varariable truth tables, as well as the complement
  * for example (with N 3) mask_tables =
  *   10101010 01010101
  *   11001100 00110011
@@ -44,45 +44,51 @@ struct Masks {
 
 const static Masks<LUT_SIZE> MASKS;
 
-void imply(Pins pins, const TruthTable& tt, Pins& implied_pins) {
-    TruthTable mask = -1;  // all 1s
+/*
+ * If all rows are masked out, conflict will be true, and the implied_pins are undefined
+ */
+
+void imply(Pins pins, const TruthTable& tt, Pins& implied_pins, bool& conflict) {
+    TruthTable mask = 0;
 
 // Mask out rows of the TT
 imply_maskout_loop:
     for (unsigned int i = 0; i < LUT_SIZE; i++) {
 #pragma HLS unroll
-        if (pins(2 * i + 1, 2 * i) == pin_value::kOne) {
-            mask &= MASKS.mask_tables[i][0];
-        } else if (pins(2 * i + 1, 2 * i) == pin_value::kZero) {
-            mask &= MASKS.mask_tables[i][1];
+        if (pins(2 * i + 1, 2 * i) == pin_value::kZero) {
+            mask |= MASKS.mask_tables[i][0];
+        } else if (pins(2 * i + 1, 2 * i) == pin_value::kOne) {
+            mask |= MASKS.mask_tables[i][1];
         }
     }
-    if (pins(2 * LUT_SIZE + 1, 2 * LUT_SIZE) == pin_value::kOne) {
-        mask &= tt;
-    } else if (pins(2 * LUT_SIZE + 1, 2 * LUT_SIZE) == pin_value::kZero) {
-        mask &= ~tt;
+    if (pins(2 * LUT_SIZE + 1, 2 * LUT_SIZE) == pin_value::kZero) {
+        mask |= tt;
+    } else if (pins(2 * LUT_SIZE + 1, 2 * LUT_SIZE) == pin_value::kOne) {
+        mask |= ~tt;
     }
+
+    conflict = (mask == -1) ? true : false;
 
 // If a column only contains 1 value, it can be implied
 imply_isUnate_loop:
     for (unsigned int i = 0; i <= LUT_SIZE; i++) {
 #pragma HLS unroll
         if (i == LUT_SIZE) {
-            TruthTable remaining_ones = mask & tt;
-            TruthTable remaining_zeros = mask & ~tt;
-            if (remaining_ones.nor_reduce()) {
+            TruthTable remaining_zeros = mask | ~tt;
+            TruthTable remaining_ones = mask | tt;
+            if (remaining_zeros.and_reduce()) {
                 implied_pins(2 * LUT_SIZE + 1, 2 * LUT_SIZE) = pin_value::kZero;
-            } else if (remaining_zeros.nor_reduce()) {
+            } else if (remaining_ones.and_reduce()) {
                 implied_pins(2 * LUT_SIZE + 1, 2 * LUT_SIZE) = pin_value::kOne;
             } else {
                 implied_pins(2 * LUT_SIZE + 1, 2 * LUT_SIZE) = pin_value::kUnknown;
             }
         } else {
-            TruthTable remaining_ones = mask & MASKS.mask_tables[i][0];
-            TruthTable remaining_zeros = mask & MASKS.mask_tables[i][1];
-            if (remaining_ones.nor_reduce()) {
+            TruthTable remaining_zeros = mask | MASKS.mask_tables[i][1];
+            TruthTable remaining_ones = mask | MASKS.mask_tables[i][0];
+            if (remaining_zeros.and_reduce()) {
                 implied_pins(2 * i + 1, 2 * i) = pin_value::kZero;
-            } else if (remaining_zeros.nor_reduce()) {
+            } else if (remaining_ones.and_reduce()) {
                 implied_pins(2 * i + 1, 2 * i) = pin_value::kOne;
             } else {
                 implied_pins(2 * i + 1, 2 * i) = pin_value::kUnknown;
