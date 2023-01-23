@@ -1,8 +1,8 @@
 # This tests for 1UIP instead of last UIP.
 INORDER = a b c d e;
-OUTORDER = z;
+OUTORDER = sat;
 new_w0_ = (e * (a + !d) * (!a + d)) + (!e * ((!a * d) + (a * !d)));
 new_w1_ = (!d + (!b * c) + (b * !c)) * (d + ((b + !c) * (!b + c)));
 new_w2_ = (!d * e) + (d * !e);
-z = new_w2_ * new_w0_ * new_w1_;
+sat = new_w2_ * new_w0_ * new_w1_;
 

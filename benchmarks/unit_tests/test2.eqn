@@ -1,7 +1,7 @@
 # Equations for "test2" written by ABC on Mon Oct  3 15:37:41 2022
 INORDER = a b c;
-OUTORDER = z;
+OUTORDER = sat;
 new_new_n0__ = (c * (a + !b) * (!a + b)) + (!c * ((!a * b) + (a * !b)));
 new_new_n1__ = (!b * c) + (b * !c);
-z = new_new_n0__ * new_new_n1__;
+sat = new_new_n0__ * new_new_n1__;
 

@@ -2,13 +2,13 @@
 
 module test0 ( 
     a, b, c, d, e, f, g, h, i, j, k, l,
-    z  );
+    sat  );
   input  a, b, c, d, e, f, g, h, i, j, k, l;
-  output z;
+  output sat;
   wire new_n0_, new_n1_;
   assign new_n0_ = h | ~g | f | e | d | ~c | a | ~b;
   assign new_n1_ = l & k & ~j & i & h & g & ~e & f;
-  assign z = new_n0_ & new_n1_;
+  assign sat = new_n0_ & new_n1_;
 endmodule
 
 
