@@ -213,8 +213,12 @@ void Graph::generateOccurrenceTables() {
     total_occurrences = 0;
     occurrence_tables = vector<vector<sw::GateID>>(nodes.size());
     for (uint32_t gid = 0; gid < nodes.size(); gid++) {
-        occurrence_tables[gid].push_back(gid);  // Each Gate's output is its own GateID
-        total_occurrences++;
+        // Whenever net N changes value, we want to run imply on Gate N (because Gate N's ouptut is net N),
+        // unless Gate N is a primary input, then we don't want to run imply (because primary input nodes are always satified)
+        if (!nodes[gid].is_PI) {
+            occurrence_tables[gid].push_back(gid);  // Each Gate's output is its own GateID
+            total_occurrences++;
+        }
     }
 
     for (uint32_t gid = 0; gid < nodes.size(); gid++) {
