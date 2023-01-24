@@ -289,7 +289,9 @@ ConflictAnalysis_loop:
         // backbone literal - doesn't need to be saved
         learnt_node_id = node_id::kDecision;
     } else {
-        learnt_node_id = clauses_end;
+        assert(clauses_end < MAX_LEARNED_CLAUSES);
+        ClauseID learnt_clause_id = clauses_end;
+        learnt_node_id = (node_type::kClause, learnt_clause_id);
         learnt_clause.literals[0] = asserting_literal;
 
         // Swap in the second watcher
@@ -300,10 +302,10 @@ ConflictAnalysis_loop:
         // Add the learnt_clause to the database
         assert(clauses_end < MAX_LEARNED_CLAUSES);
         learnt_clause.next_watcher[0] = watcher_header[learnt_clause.literals[0]];
-        watcher_header[learnt_clause.literals[0]] = (clauses_end, 0);
+        watcher_header[learnt_clause.literals[0]] = (learnt_clause_id, ap_uint<1>(0));
         learnt_clause.next_watcher[1] = watcher_header[learnt_clause.literals[1]];
-        watcher_header[learnt_clause.literals[1]] = (clauses_end, 1);
-        clauses[clauses_end] = learnt_clause;
+        watcher_header[learnt_clause.literals[1]] = (learnt_clause_id, ap_uint<1>(1));
+        clauses[learnt_clause_id] = learnt_clause;
         clauses_end++;
         // cout << "Learnt Clause ";
         // learnt_clause.print();
