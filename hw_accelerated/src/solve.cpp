@@ -106,7 +106,7 @@ void Propagate(const Gate gates[MAX_GATES], const TruthTable truth_tables[MAX_GA
 
         // Loop through watched clauses
         const ap_uint<1> polarity = pin_value::to_polarity(pa.value);
-        const Literal falsified_literal = (pa.gate_id, polarity);
+        const Literal falsified_literal = (pa.gate_id, ~polarity);
         Watcher w = watcher_header[falsified_literal];
 
         watcher_header[falsified_literal] = watcher::kInvalid;  // detach the head
