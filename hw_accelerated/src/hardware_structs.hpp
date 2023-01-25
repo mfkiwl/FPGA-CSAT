@@ -17,6 +17,7 @@ typedef ap_uint<GATE_ID_BITS + 1> Literal;
 typedef ap_uint<max(GATE_ID_BITS, CLAUSE_ID_BITS) + 1> NodeID;
 
 void printLiteral(const Literal& l);
+void printWatcher(const Watcher& w);
 
 namespace node_type {
 const ap_uint<1> kGate = 0;
@@ -162,7 +163,7 @@ struct Clause {
                 printLiteral(l);
             }
         }
-        cout << "} " << endl;
+        cout << "} ";
     }
 };
 
@@ -181,4 +182,12 @@ void printLiteral(const Literal& l) {
         cout << "~";
     }
     cout << l(Literal::width - 1, 1).to_string(10) << " ";
+}
+
+void printWatcher(const Watcher& w) {
+    if (w == watcher::kInvalid) {
+        cout << "X ";
+    } else {
+        cout << w(Watcher::width - 1, 1).to_string(10) << "[" << w(0, 0).to_string(10) << "] ";
+    }
 }

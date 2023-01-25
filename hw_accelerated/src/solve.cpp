@@ -5,6 +5,31 @@
 #include "implication.hpp"
 #include "parameters.hpp"
 
+void printWatchLists(Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_GATES], const uint32_t& num_gates) {
+    for (GateID gid = 0; gid < num_gates; gid++) {
+        for (ap_uint<1> polarity = 0;; polarity = ap_uint<1>(1)) {
+            Literal l;
+            l = (gid, polarity);
+            printLiteral(l);
+
+            Watcher w = watcher_header[l];
+            while (true) {
+                printWatcher(w);
+                if (w == watcher::kInvalid) {
+                    break;
+                }
+                assert(w != clauses[w(Watcher::width - 1, 1)].next_watcher[w(0, 0)]);
+                w = clauses[w(Watcher::width - 1, 1)].next_watcher[w(0, 0)];
+            }
+
+            cout << endl;
+            if (polarity == ap_uint<1>(1)) {
+                break;
+            }
+        }
+    }
+}
+
 void printTrail(const Assignment trail[MAX_GATES], const uint32_t& trail_end, uint32_t level_assigned[MAX_GATES]) {
     cout << "Printing Trail of " << trail_end;
     for (int t = trail_end - 1; t >= 0; t--) {
@@ -19,14 +44,16 @@ void printTrail(const Assignment trail[MAX_GATES], const uint32_t& trail_end, ui
 }
 void printClauses(const Clause clauses[MAX_LEARNED_CLAUSES], const uint32_t& clauses_end) {
     for (unsigned int c = 0; c < clauses_end; c++) {
+        cout << c << ": ";
         clauses[c].print();
-        cout << " ";
+        cout << "\n";
     }
 }
 void Enqueue(const Assignment& a, const NodeID& reason, PinValue assigns[MAX_GATES], NodeID antecedent[MAX_GATES], uint32_t level_assigned[MAX_GATES], const uint32_t decision_level, Assignment trail[MAX_GATES], uint32_t& trail_end) {
 #pragma HLS INLINE
-    // cout << "Enqueue " << a.gate_id.to_string(10) << " = " << a.value.to_string(2) << endl;
+    // cout << "Enqueue " << a.gate_id.to_string(10) << " = " << a.value.to_string(10) << " @ " << decision_level << endl;
     assert(a.gate_id != gate_id::kNoConnect);
+    assert(trail_end <= MAX_GATES);
     assigns[a.gate_id] = a.value;
     level_assigned[a.gate_id] = decision_level;
     antecedent[a.gate_id] = reason;
@@ -120,7 +147,9 @@ void Propagate(const Gate gates[MAX_GATES], const TruthTable truth_tables[MAX_GA
 
             // cout << "Falsified Literal = ";
             // printLiteral(falsified_literal);
-            // cout << ". Visiting Clause " << clause_id.to_string(10) << " index " << w_index.to_string(10) << endl;
+            // cout << "\nWatcher is ";
+            // printWatcher(w);
+            // cout << endl;
 
             auto LiteralIsTrue = [&](const Literal& l) {
                 PinValue val = assigns[l(Literal::width - 1, 1)];
@@ -157,7 +186,9 @@ void Propagate(const Gate gates[MAX_GATES], const TruthTable truth_tables[MAX_GA
             // No swap found
             if (LiteralIsFalse(other_watched_literal)) {
                 // Conflict
-                cout << "Conflict from clause!" << endl;
+                // cout << "Conflict from clause " << clause_id.to_string(10) << ": ";
+                // clauses[clause_id].print();
+                // cout << "\n";
                 conflict = (node_type::kClause, clause_id);
                 conflict_occurred = true;
             } else {
@@ -167,7 +198,9 @@ void Propagate(const Gate gates[MAX_GATES], const TruthTable truth_tables[MAX_GA
 
                 const Assignment enqueue_assignment = {enqueue_gid, enqueue_val};
                 const NodeID enqueue_reason = (node_type::kClause, clause_id);
-                cout << "Implication from clause!" << endl;
+                // cout << "Implication from clause " << clause_id.to_string(10) << ": ";
+                // clauses[clause_id].print();
+                // cout << "\n";
                 Enqueue(enqueue_assignment, enqueue_reason, assigns, antecedent, level_assigned, decision_level, trail, trail_end);
             }
 
@@ -223,7 +256,7 @@ void ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watch
 
     auto resolveClause = [&](ClauseID cid) {
         const Clause clause = clauses[cid];
-        clause.print();
+        // clause.print();
         for (uint32_t i = 0; i < MAX_LITERALS_PER_CLAUSE; i++) {
             const Literal l = clause.literals[i];
             if (l == literal::kInvalid) {
@@ -250,13 +283,13 @@ void ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watch
     auto resolveNode = [&](NodeID nid) {
         // cout << "Resolving " << nid << endl;
         if (nid[NodeID::width - 1] == node_type::kGate) {
-            resolveGate(GateID(nid(NodeID::width - 2, 0)));
+            resolveGate(GateID(nid(GateID::width - 1, 0)));
         } else {
-            resolveClause(ClauseID(nid(NodeID::width - 2, 0)));
+            resolveClause(ClauseID(nid(ClauseID::width - 1, 0)));
         }
     };
 
-    // cout << "\n Conflict Analysis:" << endl;
+    // cout << "Conflict Analysis: ";
     // cout << "Trail:";
     // printTrail(trail, trail_end, level_assigned);
     // cout << "Clauses:";
@@ -278,6 +311,7 @@ ConflictAnalysis_loop:
         TrailPop(trail, trail_end, assigns, level_assigned);
         needs_resolution_count--;
     } while (needs_resolution_count > 0);
+    // cout << "\n";
 
     // Insert asserting_literal
     const PinValue asserting_value = invert(a.value);
@@ -287,6 +321,9 @@ ConflictAnalysis_loop:
     correcting_assignment = {a.gate_id, asserting_value};
     if (lc_end == 1) {
         // backbone literal - doesn't need to be saved
+        // cout << "Learnt backbone literal ";
+        // printLiteral(asserting_literal);
+        // cout << "\n";
         learnt_node_id = node_id::kDecision;
     } else {
         assert(clauses_end < MAX_LEARNED_CLAUSES);
