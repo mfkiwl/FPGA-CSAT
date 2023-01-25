@@ -264,7 +264,7 @@ void ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watch
             }
             GateID var = GateID(l(Literal::width - 1, 1));
             if (stamps[var] != conflict_id && level_assigned[var] != 0) {
-                VMTF_queue.bump(var);
+                // VMTF_queue.bump(var);  // Performs better experimentally if literals in learned clauses don't get bumped
                 if (level_assigned[var] < decision_level) {
                     if (level_assigned[var] > backjump_level) {
                         backjump_level = level_assigned[var];
