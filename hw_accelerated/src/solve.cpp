@@ -346,7 +346,7 @@ ConflictAnalysis_loop:
         clauses_end++;
         // cout << "Learnt Clause ";
         // learnt_clause.print();
-        // cout << endl;
+        // cout << "@ " << backjump_level << "\n";
     }
     conflict_id++;
 }
@@ -409,7 +409,7 @@ initialize_RAM:
         occurrence_gids[i] = g_occurrence_gids[i];
     }
 
-    static Clause clauses[MAX_GATES];
+    static Clause clauses[MAX_LEARNED_CLAUSES];
     static uint32_t trail_lim[MAX_GATES];
     static Assignment trail[MAX_GATES];
     uint32_t clauses_end = 0;
@@ -445,6 +445,7 @@ solve_loop:
             VMTF_next_search = VMTF_queue.head;
 
             uint32_t backtrack_step = trail_lim[backjump_level];
+            assert(backtrack_step < MAX_GATES);
             CancelUntil(backtrack_step, trail, trail_end, assigns, level_assigned);
             q_head = trail_end;
             decision_level = backjump_level;
@@ -456,7 +457,9 @@ solve_loop:
             if (!PickBranching(VMTF_queue, VMTF_next_search, level_assigned, branching_assignment)) {
                 cout << "Kernel: SAT" << endl;
                 (*is_sat) = true;
-                //printTrail(trail, trail_end, level_assigned);
+                // printTrail(trail, trail_end, level_assigned);
+                // printWatchLists(watcher_header, clauses, num_gates);
+                // printClauses(clauses, clauses_end);
                 StoreTrail(trail, g_trail);
                 return;
             }
