@@ -134,6 +134,10 @@ void Solver::_solve() {
     OCL_CHECK(err, err = q.enqueueMigrateMemObjects({trail_buffer, is_sat_buffer, conflict_count_buffer, decision_count_buffer, major_propagation_count_buffer, minor_propagation_count_buffer}, CL_MIGRATE_MEM_OBJECT_HOST));
     q.finish();
 
+    if (!is_sat) {
+        return;
+    }
+
     // Extract PI assignments from trail
     satisfying_assignment.clear();
     uint32_t t = 0;

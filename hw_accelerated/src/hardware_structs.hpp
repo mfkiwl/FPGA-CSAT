@@ -78,9 +78,9 @@ struct Propagation {
     PinValue value;
     void print() const {
         if (direction == OUTWARDS) {
-            cout << "OUTWARDS: " << from_gate << "[" << sink_offset << "] -> " << to_gate << " ( = " << value << " )" << endl;
+            cout << "OUTWARDS: " << from_gate << "[" << sink_offset << "] -> " << to_gate << " ( = " << value << " ) ";
         } else {
-            cout << "INWARDS: " << from_gate << " -> " << to_gate << "[" << sink_offset << "] ( = " << value << " )" << endl;
+            cout << "INWARDS: " << from_gate << " -> " << to_gate << "[" << sink_offset << "] ( = " << value << " ) ";
         }
     }
 };

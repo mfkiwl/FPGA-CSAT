@@ -340,6 +340,9 @@ solve_loop:
             uint32_t backtrack_step = trail_lim[backjump_level];
             CancelUntil(backtrack_step, trail, trail_end, circuit, level_assigned);
             decision_level = backjump_level;
+            // cout << "Backtrack to " << backjump_level << ". asserting assignment: ";
+            // Propagation(LEARNED, trail[UIP_step].to_gate, 0, OUTWARDS, invert(trail[UIP_step].value)).print();
+            // cout << " @ " << decision_level << endl;
             Queue(Propagation(LEARNED, trail[UIP_step].to_gate, 0, OUTWARDS, invert(trail[UIP_step].value)), propagation_queue, pq_end);
         } else {
             trail_lim[decision_level] = trail_end;
@@ -351,6 +354,9 @@ solve_loop:
             }
             (*decision_count)++;
             decision_level++;
+            // cout << "Decision: ";
+            // branching_prop.print();
+            // cout << " @ " << decision_level << endl;
             Queue(branching_prop, propagation_queue, pq_end);
         }
     }
