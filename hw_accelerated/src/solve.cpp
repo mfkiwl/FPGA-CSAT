@@ -218,7 +218,7 @@ void Propagate(const Gate gates[MAX_GATES], const TruthTable truth_tables[MAX_GA
     }
 }
 
-void ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_LEARNED_CLAUSES], uint32_t& clauses_end, PinValue assigns[MAX_GATES], const Assignment trail[MAX_GATES], uint32_t& trail_end, const uint32_t decision_level, const NodeID antecedent[MAX_GATES], uint32_t stamps[MAX_GATES], uint32_t level_assigned[MAX_GATES], ArrayQueue& VMTF_queue, uint32_t& backjump_level, Assignment& correcting_assignment, NodeID& learnt_node_id) {
+void ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_LEARNED_CLAUSES], uint32_t& clauses_end, PinValue assigns[MAX_GATES], const Assignment trail[MAX_GATES], uint32_t& trail_end, const uint32_t decision_level, const NodeID antecedent[MAX_GATES], uint32_t stamps[MAX_GATES], uint32_t level_assigned[MAX_GATES], ArrayQueue& VMTF_queue, uint32_t& backjump_level, Assignment& asserting_assignment, NodeID& learnt_node_id) {
     static uint16_t conflict_id = 0;
 
     Literal uip = literal::kInvalid;
@@ -236,7 +236,6 @@ void ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watch
         for (Offset o = 0; o < LUT_SIZE + 1; o++) {
             GateID edge = g.edges[o];
             if (pin_value::isAssigned(assigns[edge]) && stamps[edge] != conflict_id && level_assigned[edge] != 0) {
-                VMTF_queue.bump(edge);
                 Literal l;
                 l = (edge, ~pin_value::to_polarity(assigns[edge]));  // falsified
                 if (level_assigned[edge] < decision_level) {
@@ -264,7 +263,6 @@ void ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watch
             }
             GateID var = GateID(l(Literal::width - 1, 1));
             if (stamps[var] != conflict_id && level_assigned[var] != 0) {
-                // VMTF_queue.bump(var);  // Performs better experimentally if literals in learned clauses don't get bumped
                 if (level_assigned[var] < decision_level) {
                     if (level_assigned[var] > backjump_level) {
                         backjump_level = level_assigned[var];
@@ -307,6 +305,7 @@ ConflictAnalysis_loop:
             t--;
         }
         a = trail[t];
+        VMTF_queue.bump(a.gate_id);
         node_to_resolve = antecedent[a.gate_id];
         TrailPop(trail, trail_end, assigns, level_assigned);
         needs_resolution_count--;
@@ -318,7 +317,7 @@ ConflictAnalysis_loop:
     Literal asserting_literal;
     asserting_literal = (a.gate_id, pin_value::to_polarity(asserting_value));
 
-    correcting_assignment = {a.gate_id, asserting_value};
+    asserting_assignment = {a.gate_id, asserting_value};
     if (lc_end == 1) {
         // backbone literal - doesn't need to be saved
         // cout << "Learnt backbone literal ";
@@ -439,9 +438,9 @@ solve_loop:
                 return;
             }
             uint32_t backjump_level;
-            Assignment correcting_assignment;
+            Assignment asserting_assignment;
             NodeID learnt_node_id;
-            ConflictAnalysis(conflict, gates, watcher_header, clauses, clauses_end, assigns, trail, trail_end, decision_level, antecedent, stamps, level_assigned, VMTF_queue, backjump_level, correcting_assignment, learnt_node_id);
+            ConflictAnalysis(conflict, gates, watcher_header, clauses, clauses_end, assigns, trail, trail_end, decision_level, antecedent, stamps, level_assigned, VMTF_queue, backjump_level, asserting_assignment, learnt_node_id);
             VMTF_next_search = VMTF_queue.head;
 
             uint32_t backtrack_step = trail_lim[backjump_level];
@@ -449,8 +448,10 @@ solve_loop:
             CancelUntil(backtrack_step, trail, trail_end, assigns, level_assigned);
             q_head = trail_end;
             decision_level = backjump_level;
-
-            Enqueue(correcting_assignment, learnt_node_id, assigns, antecedent, level_assigned, decision_level, trail, trail_end);
+            // cout << "Backtrack to " << backjump_level << ". asserting assignment: ";
+            // asserting_assignment.print();
+            // cout << " @ " << decision_level << endl;
+            Enqueue(asserting_assignment, learnt_node_id, assigns, antecedent, level_assigned, decision_level, trail, trail_end);
         } else {
             trail_lim[decision_level] = trail_end;
             Assignment branching_assignment;
@@ -465,6 +466,9 @@ solve_loop:
             }
             (*decision_count)++;
             decision_level++;
+            // cout << "Decision: ";
+            // branching_assignment.print();
+            // cout << " @ " << decision_level << endl;
             Enqueue(branching_assignment, node_id::kDecision, assigns, antecedent, level_assigned, decision_level, trail, trail_end);
         }
     }
