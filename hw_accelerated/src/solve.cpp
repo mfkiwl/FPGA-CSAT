@@ -30,10 +30,10 @@ void printWatchLists(Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_G
     }
 }
 
-void printTrail(const Assignment trail[MAX_GATES], const uint32_t& trail_end, uint32_t level_assigned[MAX_GATES]) {
-    cout << "Printing Trail of " << trail_end;
-    for (int t = trail_end - 1; t >= 0; t--) {
-        if (t == trail_end - 1 || level_assigned[trail[t + 1].gate_id] != level_assigned[trail[t].gate_id]) {
+void printTrailSection(const uint32_t& start, const uint32_t& end, const Assignment trail[MAX_GATES], uint32_t level_assigned[MAX_GATES]) {
+    cout << "Printing Trail from " << start << " to " << end;
+    for (int t = end - 1; t >= start; t--) {
+        if (t == end - 1 || level_assigned[trail[t + 1].gate_id] != level_assigned[trail[t].gate_id]) {
             cout << endl
                  << "(d = " << level_assigned[trail[t].gate_id] << ") : ";
         }
@@ -42,6 +42,11 @@ void printTrail(const Assignment trail[MAX_GATES], const uint32_t& trail_end, ui
     }
     cout << endl;
 }
+
+void printTrail(const Assignment trail[MAX_GATES], const uint32_t& trail_end, uint32_t level_assigned[MAX_GATES]) {
+    printTrailSection(0, trail_end, trail, level_assigned);
+}
+
 void printClauses(const Clause clauses[MAX_LEARNED_CLAUSES], const uint32_t& clauses_end) {
     for (unsigned int c = 0; c < clauses_end; c++) {
         cout << c << ": ";
@@ -279,7 +284,6 @@ void ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watch
     };
 
     auto resolveNode = [&](NodeID nid) {
-        // cout << "Resolving " << nid << endl;
         if (nid[NodeID::width - 1] == node_type::kGate) {
             resolveGate(GateID(nid(GateID::width - 1, 0)));
         } else {
@@ -298,6 +302,7 @@ ConflictAnalysis_loop:
     Assignment a;
     do {
         assert(node_to_resolve != node_id::kDecision);  // otherwise we would have found UIP
+        // cout << "resolving " << node_to_resolve << endl;
         resolveNode(node_to_resolve);
         t--;  // t was at trail_end or the already resolved assignment
         while (stamps[trail[t].gate_id] != conflict_id) {
@@ -307,10 +312,10 @@ ConflictAnalysis_loop:
         a = trail[t];
         VMTF_queue.bump(a.gate_id);
         node_to_resolve = antecedent[a.gate_id];
+        // cout << "bumping " << a.gate_id.to_string(10) << " Antecent = " << node_to_resolve << endl;
         TrailPop(trail, trail_end, assigns, level_assigned);
         needs_resolution_count--;
     } while (needs_resolution_count > 0);
-    // cout << "\n";
 
     // Insert asserting_literal
     const PinValue asserting_value = invert(a.value);
@@ -440,6 +445,9 @@ solve_loop:
             uint32_t backjump_level;
             Assignment asserting_assignment;
             NodeID learnt_node_id;
+            // cout << "Preemptively Canceling: ";
+            // printTrailSection(q_head, trail_end, trail, level_assigned);
+            CancelUntil(q_head, trail, trail_end, assigns, level_assigned);
             ConflictAnalysis(conflict, gates, watcher_header, clauses, clauses_end, assigns, trail, trail_end, decision_level, antecedent, stamps, level_assigned, VMTF_queue, backjump_level, asserting_assignment, learnt_node_id);
             VMTF_next_search = VMTF_queue.head;
 
