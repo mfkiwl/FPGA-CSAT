@@ -122,8 +122,13 @@ void Propagate(const Gate gates[MAX_GATES], const TruthTable truth_tables[MAX_GA
         const Assignment pa = trail[q_head++];
         (*propagation_count)++;
 
+        const GateID ante = antecedent[pa.gate_id];
+
         // Loop through related gates
         for (OccurrenceIndex i = occurrence_header[pa.gate_id]; i < occurrence_header[pa.gate_id + 1]; i++) {
+            if (occurrence_gids[i] == ante) {
+                continue;  // skip for performance
+            }
             (*imply_count)++;
             const GateID gid = occurrence_gids[i];
             const Gate g = gates[gid];
