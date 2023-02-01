@@ -304,6 +304,7 @@ void ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watch
             GateID var = GateID(l(Literal::width - 1, 1));
             if (stamps[var] != conflict_id && level_assigned[var] != 0) {
                 if (level_assigned[var] < decision_level) {
+                    assert(lc_end < MAX_LITERALS_PER_CLAUSE);
                     if (level_assigned[var] > backjump_level) {
                         backjump_level = level_assigned[var];
                         swap_index = lc_end;
