@@ -258,7 +258,7 @@ void Propagate(const Gate gates[MAX_GATES], const TruthTable truth_tables[MAX_GA
     }
 }
 
-void ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_LEARNED_CLAUSES], uint32_t& clauses_end, PinValue assigns[MAX_GATES], const Assignment trail[MAX_GATES], uint32_t& trail_end, const uint32_t decision_level, const NodeID antecedent[MAX_GATES], uint32_t stamps[MAX_GATES], uint32_t level_assigned[MAX_GATES], ArrayQueue& VMTF_queue, uint32_t& backjump_level, Assignment& asserting_assignment, NodeID& learnt_node_id) {
+bool ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_LEARNED_CLAUSES], uint32_t& clauses_end, PinValue assigns[MAX_GATES], const Assignment trail[MAX_GATES], uint32_t& trail_end, const uint32_t decision_level, const NodeID antecedent[MAX_GATES], uint32_t stamps[MAX_GATES], uint32_t level_assigned[MAX_GATES], ArrayQueue& VMTF_queue, uint32_t& backjump_level, Assignment& asserting_assignment, NodeID& learnt_node_id) {
     static uint16_t conflict_id = 0;
 
     Literal uip = literal::kInvalid;
@@ -270,6 +270,10 @@ void ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watch
     NodeID node_to_resolve = conflict;
     backjump_level = 0;
     uint16_t swap_index = 0;
+    bool ret = true;
+    uint32_t bump_count = 0;
+    bool permit_bump = true;
+    bool keep_clause = true;
 
     auto resolveGate = [&](GateID gid) {
         const Gate g = gates[gid];
@@ -279,12 +283,16 @@ void ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watch
                 Literal l;
                 l = (edge, ~pin_value::to_polarity(assigns[edge]));  // falsified
                 if (level_assigned[edge] < decision_level) {
-                    if (level_assigned[edge] > backjump_level) {
-                        backjump_level = level_assigned[edge];
-                        swap_index = lc_end;
+                    if (lc_end == MAX_LITERALS_PER_CLAUSE) {
+                        keep_clause = false;
+                    } else {
+                        if (level_assigned[edge] > backjump_level) {
+                            backjump_level = level_assigned[edge];
+                            swap_index = lc_end;
+                        }
+                        learnt_clause.literals[lc_end] = l;
+                        lc_end++;
                     }
-                    learnt_clause.literals[lc_end] = l;
-                    lc_end++;
                 } else if (level_assigned[edge] == decision_level) {
                     needs_resolution_count++;
                 }
@@ -294,6 +302,7 @@ void ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watch
     };
 
     auto resolveClause = [&](ClauseID cid) {
+        permit_bump = false;
         const Clause clause = clauses[cid];
         // clause.print();
         for (uint32_t i = 0; i < MAX_LITERALS_PER_CLAUSE; i++) {
@@ -304,13 +313,16 @@ void ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watch
             GateID var = GateID(l(Literal::width - 1, 1));
             if (stamps[var] != conflict_id && level_assigned[var] != 0) {
                 if (level_assigned[var] < decision_level) {
-                    assert(lc_end < MAX_LITERALS_PER_CLAUSE);
-                    if (level_assigned[var] > backjump_level) {
-                        backjump_level = level_assigned[var];
-                        swap_index = lc_end;
+                    if (lc_end == MAX_LITERALS_PER_CLAUSE) {
+                        keep_clause = false;
+                    } else {
+                        if (level_assigned[var] > backjump_level) {
+                            backjump_level = level_assigned[var];
+                            swap_index = lc_end;
+                        }
+                        learnt_clause.literals[lc_end] = l;  // This literal will be false because it is a prior assignment that lead to an implication
+                        lc_end++;
                     }
-                    learnt_clause.literals[lc_end] = l;  // This literal will be false because it is a prior assignment that lead to an implication
-                    lc_end++;
                 } else if (level_assigned[var] == decision_level) {
                     needs_resolution_count++;
                 }
@@ -323,7 +335,11 @@ void ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watch
         if (nid[NodeID::width - 1] == node_type::kGate) {
             resolveGate(GateID(nid(GateID::width - 1, 0)));
         } else {
-            resolveClause(ClauseID(nid(ClauseID::width - 1, 0)));
+            if (nid == node_id::kForgot) {
+                ret = false;
+            } else {
+                resolveClause(ClauseID(nid(ClauseID::width - 1, 0)));
+            }
         }
     };
 
@@ -346,49 +362,51 @@ ConflictAnalysis_loop:
             t--;
         }
         a = trail[t];
-        VMTF_queue.bump(a.gate_id);
+        if (permit_bump) {
+            VMTF_queue.bump(a.gate_id);
+            bump_count++;
+        }
         node_to_resolve = antecedent[a.gate_id];
         // cout << "bumping " << a.gate_id.to_string(10) << " Antecent = " << node_to_resolve << endl;
         TrailPop(trail, trail_end, assigns, level_assigned);
         needs_resolution_count--;
     } while (needs_resolution_count > 0);
 
-    // Insert asserting_literal
+    // Get asserting_assignment
     const PinValue asserting_value = invert(a.value);
     Literal asserting_literal;
     asserting_literal = (a.gate_id, pin_value::to_polarity(asserting_value));
-
     asserting_assignment = {a.gate_id, asserting_value};
+    
     if (lc_end == 1) {
         // backbone literal - doesn't need to be saved
-        // cout << "Learnt backbone literal ";
-        // printLiteral(asserting_literal);
-        // cout << "\n";
         learnt_node_id = node_id::kDecision;
     } else {
-        assert(clauses_end < MAX_LEARNED_CLAUSES);
-        ClauseID learnt_clause_id = clauses_end;
-        learnt_node_id = (node_type::kClause, learnt_clause_id);
-        learnt_clause.literals[0] = asserting_literal;
+        if (keep_clause) {
+            assert(clauses_end < MAX_LEARNED_CLAUSES);
 
-        // Swap in the second watcher
-        Literal temp = learnt_clause.literals[1];
-        learnt_clause.literals[1] = learnt_clause.literals[swap_index];
-        learnt_clause.literals[swap_index] = temp;
+            ClauseID learnt_clause_id = clauses_end;
+            learnt_node_id = (node_type::kClause, learnt_clause_id);
+            learnt_clause.literals[0] = asserting_literal;
 
-        // Add the learnt_clause to the database
-        assert(clauses_end < MAX_LEARNED_CLAUSES);
-        learnt_clause.next_watcher[0] = watcher_header[learnt_clause.literals[0]];
-        watcher_header[learnt_clause.literals[0]] = (learnt_clause_id, ap_uint<1>(0));
-        learnt_clause.next_watcher[1] = watcher_header[learnt_clause.literals[1]];
-        watcher_header[learnt_clause.literals[1]] = (learnt_clause_id, ap_uint<1>(1));
-        clauses[learnt_clause_id] = learnt_clause;
-        clauses_end++;
-        // cout << "Learnt Clause ";
-        // learnt_clause.print();
-        // cout << "@ " << backjump_level << "\n";
+            // Swap in the second watcher
+            Literal temp = learnt_clause.literals[1];
+            learnt_clause.literals[1] = learnt_clause.literals[swap_index];
+            learnt_clause.literals[swap_index] = temp;
+            
+            // Add the learnt_clause to the database
+            learnt_clause.next_watcher[0] = watcher_header[learnt_clause.literals[0]];
+            watcher_header[learnt_clause.literals[0]] = (learnt_clause_id, ap_uint<1>(0));
+            learnt_clause.next_watcher[1] = watcher_header[learnt_clause.literals[1]];
+            watcher_header[learnt_clause.literals[1]] = (learnt_clause_id, ap_uint<1>(1));
+            clauses[learnt_clause_id] = learnt_clause;
+            clauses_end++;
+        } else {
+            learnt_node_id = node_id::kForgot;
+        }
     }
     conflict_id++;
+    return ret;
 }
 
 bool PickBranching(ArrayQueue& VMTF_queue, GateID& VMTF_next_search, uint32_t level_assigned[MAX_GATES], Assignment& branching_assignment) {
@@ -487,7 +505,11 @@ solve_loop:
             //  cout << "Preemptively Canceling: (q_head = " << q_head << ") ";
             //  printTrailSection(asserting_location, trail_end, trail, level_assigned);
             CancelUntil(asserting_location + 1, trail, trail_end, assigns, level_assigned);
-            ConflictAnalysis(conflict, gates, watcher_header, clauses, clauses_end, assigns, trail, trail_end, decision_level, antecedent, stamps, level_assigned, VMTF_queue, backjump_level, asserting_assignment, learnt_node_id);
+            if (!ConflictAnalysis(conflict, gates, watcher_header, clauses, clauses_end, assigns, trail, trail_end, decision_level, antecedent, stamps, level_assigned, VMTF_queue, backjump_level, asserting_assignment, learnt_node_id)) {
+                backjump_level = decision_level - 1;
+                Assignment a = trail[trail_lim[decision_level - 1]];
+                asserting_assignment = {a.gate_id, invert(a.value)};
+            };
             VMTF_next_search = VMTF_queue.head;
 
             uint32_t backtrack_step = trail_lim[backjump_level];

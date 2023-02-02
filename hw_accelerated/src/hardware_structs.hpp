@@ -22,13 +22,11 @@ void printWatcher(const Watcher& w);
 namespace node_type {
 const ap_uint<1> kGate = 0;
 const ap_uint<1> kClause = 1;
-
 }  // namespace node_type
 
 namespace node_id {
-const NodeID kDecision = NodeID(sw::DECISION);
-const NodeID kSelf = NodeID(sw::SELF);
-const NodeID kLearned = NodeID(sw::LEARNED);  // placeholder
+const NodeID kDecision = NodeID(-1);
+const NodeID kForgot = NodeID(-2);  // for learned nodes that aren't stored
 }  // namespace node_id
 
 namespace watcher {

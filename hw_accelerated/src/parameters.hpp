@@ -11,6 +11,6 @@ static constexpr unsigned int ceillog2(unsigned int x) {
 }
 
 constexpr unsigned int GATE_ID_BITS = ceillog2(MAX_GATES);
-constexpr unsigned int CLAUSE_ID_BITS = ceillog2(MAX_LEARNED_CLAUSES);
+constexpr unsigned int CLAUSE_ID_BITS = ceillog2(MAX_LEARNED_CLAUSES + RESERVED_NODE_IDS);
 constexpr unsigned int OFFSET_BITS = ceillog2(LUT_SIZE + 1);
 constexpr unsigned int OCCURRENCE_BITS = ceillog2(MAX_OCCURRENCES + 1);  // +1 for the end occurrence index
