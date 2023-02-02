@@ -89,6 +89,7 @@ void Solver::_solve() {
 
     // static to avoid stack overflow
     alignas(4096) static array<Gate, MAX_GATES> g_gates;
+    alignas(4096) static array<PinValue, MAX_GATES> g_initial_assigns;
     alignas(4096) static array<TruthTable, MAX_GATES> g_truth_tables;
     alignas(4096) static array<OccurrenceIndex, MAX_GATES + 1> g_occurrence_header;
     alignas(4096) static array<GateID, MAX_OCCURRENCES> g_occurrence_gids;
@@ -101,6 +102,7 @@ void Solver::_solve() {
     propagation_count = 0;
     imply_count = 0;
     OCL_CHECK(err, cl::Buffer g_gates_buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(Gate) * g_gates.size(), g_gates.data(), &err));
+    OCL_CHECK(err, cl::Buffer g_initial_assigns_buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(PinValue) * g_initial_assigns.size(), g_initial_assigns.data(), &err));
     OCL_CHECK(err, cl::Buffer g_truth_tables_buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(TruthTable) * g_truth_tables.size(), g_truth_tables.data(), &err));
     OCL_CHECK(err, cl::Buffer g_occurrence_header_buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(OccurrenceIndex) * g_occurrence_header.size(), g_occurrence_header.data(), &err));
     OCL_CHECK(err, cl::Buffer g_occurrence_gids_buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(GateID) * g_occurrence_gids.size(), g_occurrence_gids.data(), &err));
@@ -113,23 +115,25 @@ void Solver::_solve() {
     OCL_CHECK(err, cl::Buffer imply_count_buffer(context, CL_MEM_USE_HOST_PTR, sizeof(imply_count), &imply_count, &err));
 
     OCL_CHECK(err, err = solve_kernel.setArg(0, g_gates_buffer));
-    OCL_CHECK(err, err = solve_kernel.setArg(1, g_truth_tables_buffer));
-    OCL_CHECK(err, err = solve_kernel.setArg(2, g_occurrence_header_buffer));
-    OCL_CHECK(err, err = solve_kernel.setArg(3, g_occurrence_gids_buffer));
-    OCL_CHECK(err, err = solve_kernel.setArg(4, uint32_t(graph.nodes.size())));
-    OCL_CHECK(err, err = solve_kernel.setArg(5, graph.name_map.at(gate_to_satisfy)));
-    OCL_CHECK(err, err = solve_kernel.setArg(6, g_trail_buffer));
-    OCL_CHECK(err, err = solve_kernel.setArg(7, is_sat_buffer));
-    OCL_CHECK(err, err = solve_kernel.setArg(8, conflict_count_buffer));
-    OCL_CHECK(err, err = solve_kernel.setArg(9, decision_count_buffer));
-    OCL_CHECK(err, err = solve_kernel.setArg(10, propagation_count_buffer));
-    OCL_CHECK(err, err = solve_kernel.setArg(11, imply_count_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(1, g_initial_assigns_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(2, g_truth_tables_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(3, g_occurrence_header_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(4, g_occurrence_gids_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(5, uint32_t(graph.nodes.size())));
+    OCL_CHECK(err, err = solve_kernel.setArg(6, graph.name_map.at(gate_to_satisfy)));
+    OCL_CHECK(err, err = solve_kernel.setArg(7, g_trail_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(8, is_sat_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(9, conflict_count_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(10, decision_count_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(11, propagation_count_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(12, imply_count_buffer));
 
     // Initialize Arrays
     for (GateID gid = 0; gid < graph.nodes.size(); gid++) {
         g_gates[gid] = Gate(graph.nodes[gid], gid);
         string hex_prefixed_string = string("0x" + to_hex(graph.truth_tables[gid]));  // Explicit prefix needed because ap_int_base will try to guess radix even if it is provided (i.e interpreting 0B10FF... as a binary literal)
         g_truth_tables[gid] = TruthTable(hex_prefixed_string.c_str());
+        g_initial_assigns[gid] = (count_ones(graph.truth_tables[gid]) > count_zeros(graph.truth_tables[gid])) ? pin_value::kUnknownPS1 : pin_value::kUnknownPS0;
     }
 
     OccurrenceIndex occ = 0;
@@ -143,7 +147,7 @@ void Solver::_solve() {
     g_occurrence_header[graph.occurrence_tables.size()] = occ;
 
     // Copy input data to device global memory
-    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({g_gates_buffer, g_truth_tables_buffer, g_trail_buffer, is_sat_buffer, conflict_count_buffer, decision_count_buffer, propagation_count_buffer, imply_count_buffer}, 0));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({g_gates_buffer, g_initial_assigns_buffer, g_truth_tables_buffer, g_trail_buffer, is_sat_buffer, conflict_count_buffer, decision_count_buffer, propagation_count_buffer, imply_count_buffer}, 0));
 
     // Launch the Kernel
     OCL_CHECK(err, err = q.enqueueTask(solve_kernel));

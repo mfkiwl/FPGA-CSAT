@@ -2,17 +2,6 @@
 #include "hardware_structs.hpp"
 #include "shared_parameters.hpp"
 
-PinValue invert(const PinValue& x) {
-#pragma HLS INLINE
-    if (x == pin_value::kZero) {
-        return pin_value::kOne;
-    } else if (x == pin_value::kOne) {
-        return pin_value::kZero;
-    } else {
-        return pin_value::kUnknown;
-    }
-}
-
 /* Generates all nth varariable truth tables, as well as the complement
  * for example (with N 3) mask_tables =
  *   10101010 01010101
@@ -81,7 +70,7 @@ imply_isUnate_loop:
             } else if (remaining_ones.and_reduce()) {
                 implied_pins(2 * LUT_SIZE + 1, 2 * LUT_SIZE) = pin_value::kOne;
             } else {
-                implied_pins(2 * LUT_SIZE + 1, 2 * LUT_SIZE) = pin_value::kUnknown;
+                implied_pins(2 * LUT_SIZE + 1, 2 * LUT_SIZE) = pin_value::kUnknownPS1;
             }
         } else {
             TruthTable remaining_zeros = mask | MASKS.mask_tables[i][1];
@@ -91,7 +80,7 @@ imply_isUnate_loop:
             } else if (remaining_ones.and_reduce()) {
                 implied_pins(2 * i + 1, 2 * i) = pin_value::kOne;
             } else {
-                implied_pins(2 * i + 1, 2 * i) = pin_value::kUnknown;
+                implied_pins(2 * i + 1, 2 * i) = pin_value::kUnknownPS1;
             }
         }
     }

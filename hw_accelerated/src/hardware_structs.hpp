@@ -49,19 +49,50 @@ const GateID kNoConnect = GateID(sw::NO_CONNECT);
 namespace pin_value {
 const PinValue kZero = 0b00;
 const PinValue kOne = 0b01;
-const PinValue UNUSED = 0b10;
-const PinValue kUnknown = 0b11;
+const PinValue kUnknownPS0 = 0b10;
+const PinValue kUnknownPS1 = 0b11;
 
 bool isAssigned(const PinValue& pv) {
     return pv == kZero || pv == kOne;
 }
 
 bool isUnknown(const PinValue& pv) {
-    return pv == kUnknown;
+    return pv == kUnknownPS0 || pv == kUnknownPS1;
+}
+
+PinValue inverse(const PinValue& pv) {
+#pragma HLS INLINE
+    assert(isAssigned(pv));
+    if (pv == kZero) {
+        return kOne;
+    } else {
+        return kZero;
+    }
+}
+
+PinValue savePhase(const PinValue& pv) {
+#pragma HLS INLINE
+    assert(isAssigned(pv));
+    if (pv == kZero) {
+        return kUnknownPS0;
+    } else {
+        return kUnknownPS1;
+    }
+}
+
+PinValue restorePhase(const PinValue& pv) {
+#pragma HLS INLINE
+    assert(isUnknown(pv));
+    if (pv == kUnknownPS0) {
+        return kZero;
+    } else {
+        return kOne;
+    }
 }
 
 ap_uint<1> to_polarity(const PinValue& pv) {
-    assert(pv == kZero || pv == kOne);
+#pragma HLS INLINE
+    assert(isAssigned(pv));
     if (pv == kZero) {
         return ap_uint<1>(1);  // negative (inverted) polarity
     } else {

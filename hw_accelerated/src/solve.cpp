@@ -68,7 +68,7 @@ void Enqueue(const Assignment& a, const NodeID& reason, PinValue assigns[MAX_GAT
 }
 
 void Cancel(const GateID& gid, PinValue assigns[MAX_GATES], uint32_t level_assigned[MAX_GATES]) {
-    assigns[gid] = pin_value::kUnknown;  // todo! Save Phase
+    assigns[gid] = pin_value::savePhase(assigns[gid]);
     level_assigned[gid] = UNASSIGNED;
 }
 
@@ -140,7 +140,7 @@ void Propagate(const Gate gates[MAX_GATES], const TruthTable truth_tables[MAX_GA
                 if (edge != gate_id::kNoConnect) {
                     initial_pins.index(o) = assigns[edge];
                 } else {
-                    initial_pins.index(o) = pin_value::kUnknown;  // overkill, but primary input nodes need x[0] to be unknown so nothing gets implied
+                    initial_pins.index(o) = pin_value::kUnknownPS1;  // arbitrary as the TT is not sensitive to no connect pins
                 }
             }
 
@@ -373,11 +373,11 @@ ConflictAnalysis_loop:
     } while (needs_resolution_count > 0);
 
     // Get asserting_assignment
-    const PinValue asserting_value = invert(a.value);
+    const PinValue asserting_value = pin_value::inverse(a.value);
     Literal asserting_literal;
     asserting_literal = (a.gate_id, pin_value::to_polarity(asserting_value));
     asserting_assignment = {a.gate_id, asserting_value};
-    
+
     if (lc_end == 1) {
         // backbone literal - doesn't need to be saved
         learnt_node_id = node_id::kDecision;
@@ -393,7 +393,7 @@ ConflictAnalysis_loop:
             Literal temp = learnt_clause.literals[1];
             learnt_clause.literals[1] = learnt_clause.literals[swap_index];
             learnt_clause.literals[swap_index] = temp;
-            
+
             // Add the learnt_clause to the database
             learnt_clause.next_watcher[0] = watcher_header[learnt_clause.literals[0]];
             watcher_header[learnt_clause.literals[0]] = (learnt_clause_id, ap_uint<1>(0));
@@ -409,12 +409,12 @@ ConflictAnalysis_loop:
     return ret;
 }
 
-bool PickBranching(ArrayQueue& VMTF_queue, GateID& VMTF_next_search, uint32_t level_assigned[MAX_GATES], Assignment& branching_assignment) {
+bool PickBranching(ArrayQueue& VMTF_queue, GateID& VMTF_next_search, uint32_t level_assigned[MAX_GATES], PinValue assigns[MAX_GATES], Assignment& branching_assignment) {
     // Search for next unknown variable
 PickBranching_loop:
     while (VMTF_next_search != gate_id::kNoConnect) {
         if (level_assigned[VMTF_next_search] == UNASSIGNED) {
-            branching_assignment = Assignment(VMTF_next_search, pin_value::kOne);
+            branching_assignment = Assignment(VMTF_next_search, pin_value::restorePhase(assigns[VMTF_next_search]));
             VMTF_next_search = VMTF_queue.array[VMTF_next_search].forward;
             return true;
         }
@@ -437,7 +437,7 @@ extern "C" {
 
 */
 
-void solve(const Gate g_gates[MAX_GATES], const TruthTable g_truth_tables[MAX_GATES], const OccurrenceIndex g_occurrence_header[MAX_GATES + 1], const GateID g_occurrence_gids[MAX_OCCURRENCES], const uint32_t num_gates, const uint32_t gate_to_satisfy, Assignment g_trail[MAX_GATES], bool* is_sat, uint32_t* const conflict_count, uint32_t* const decision_count, uint64_t* const propagation_count, uint64_t* const imply_count) {
+void solve(const Gate g_gates[MAX_GATES], const PinValue g_initial_assigns[MAX_GATES], const TruthTable g_truth_tables[MAX_GATES], const OccurrenceIndex g_occurrence_header[MAX_GATES + 1], const GateID g_occurrence_gids[MAX_OCCURRENCES], const uint32_t num_gates, const uint32_t gate_to_satisfy, Assignment g_trail[MAX_GATES], bool* is_sat, uint32_t* const conflict_count, uint32_t* const decision_count, uint64_t* const propagation_count, uint64_t* const imply_count) {
 #pragma HLS INTERFACE mode = m_axi port = nodes
 #pragma HLS INTERFACE mode = m_axi port = truth_tables
 #pragma HLS INTERFACE mode = m_axi port = trail
@@ -454,7 +454,7 @@ void solve(const Gate g_gates[MAX_GATES], const TruthTable g_truth_tables[MAX_GA
 
 initialize_RAM:
     for (unsigned int i = 0; i < MAX_GATES; i++) {
-        assigns[i] = pin_value::kUnknown;
+        assigns[i] = g_initial_assigns[i];
         level_assigned[i] = UNASSIGNED;
         watcher_header[2 * i] = watcher::kInvalid;
         watcher_header[2 * i + 1] = watcher::kInvalid;
@@ -504,11 +504,11 @@ solve_loop:
             assert(asserting_location + 1 >= q_head);
             //  cout << "Preemptively Canceling: (q_head = " << q_head << ") ";
             //  printTrailSection(asserting_location, trail_end, trail, level_assigned);
-            CancelUntil(asserting_location + 1, trail, trail_end, assigns, level_assigned);
+            // CancelUntil(asserting_location + 1, trail, trail_end, assigns, level_assigned);
             if (!ConflictAnalysis(conflict, gates, watcher_header, clauses, clauses_end, assigns, trail, trail_end, decision_level, antecedent, stamps, level_assigned, VMTF_queue, backjump_level, asserting_assignment, learnt_node_id)) {
                 backjump_level = decision_level - 1;
                 Assignment a = trail[trail_lim[decision_level - 1]];
-                asserting_assignment = {a.gate_id, invert(a.value)};
+                asserting_assignment = {a.gate_id, pin_value::inverse(a.value)};
             };
             VMTF_next_search = VMTF_queue.head;
 
@@ -524,7 +524,7 @@ solve_loop:
         } else {
             trail_lim[decision_level] = trail_end;
             Assignment branching_assignment;
-            if (!PickBranching(VMTF_queue, VMTF_next_search, level_assigned, branching_assignment)) {
+            if (!PickBranching(VMTF_queue, VMTF_next_search, level_assigned, assigns, branching_assignment)) {
                 cout << "Kernel: SAT" << endl;
                 (*is_sat) = true;
                 // printTrail(trail, trail_end, level_assigned);
