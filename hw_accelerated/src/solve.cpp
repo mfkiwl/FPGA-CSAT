@@ -159,13 +159,14 @@ Propagate_loop:
     pq_end = 0;
 }
 
-void ConflictAnalysis(const Conflict& conflict, const GateNode nodes[MAX_GATES], const PinAssignment trail[MAX_PINS], const uint32_t& trail_end, const uint32_t decision_level, const Pin antecedent[MAX_GATES], bool stamped[MAX_GATES][LUT_SIZE + 1], uint32_t level_assigned[MAX_GATES], ArrayQueue& VMTF_queue, uint32_t& backjump_level, uint32_t& UIP_step) {
+bool ConflictAnalysis(const Conflict& conflict, const GateNode nodes[MAX_GATES], const PinAssignment trail[MAX_PINS], const uint32_t& trail_end, const uint32_t decision_level, const Pin antecedent[MAX_GATES], bool stamped[MAX_GATES][LUT_SIZE + 1], uint32_t level_assigned[MAX_GATES], ArrayQueue& VMTF_queue, uint32_t& backjump_level, uint32_t& UIP_step) {
     // cout << "Conflict Analysis" << endl;
     // cout << "Stamping " << conflict.source_gate << "[" << LUT_SIZE << "]" << endl;
     // cout << "Stamping " << conflict.sink_gate << "[" << conflict.sink_offset << "]" << endl;
     stamped[conflict.source_gate][LUT_SIZE] = true;
     stamped[conflict.sink_gate][conflict.sink_offset] = true;
     uint32_t pins_stamped = 2;
+    bool ret = true;
 
     bool UIP_found = false;
 ConflictAnalysis_loop:
@@ -215,8 +216,8 @@ ConflictAnalysis_loop:
                 backjump_level = max(backjump_level, level_assigned[pa.to_gate]);
             } else if (ante.gate == LEARNED) {
                 if (level_assigned[pa.to_gate] == decision_level) {
-                    // Since we don't store the learned gate, if we need to include the learned gate in the conflict, the worse case would be the prior level
-                    backjump_level = decision_level - 1;
+                    // Since we don't store the learned gate, if we need to include the learned gate in the conflict, we return a fail signal
+                    ret = false;
                 } else {
                     backjump_level = max(backjump_level, level_assigned[pa.to_gate]);
                 }
@@ -233,6 +234,7 @@ ConflictAnalysis_loop:
         }
     }
     assert(pins_stamped == 0);
+    return ret;
 }
 
 void CancelUntil(const uint32_t& backtrack_step, const PinAssignment trail[MAX_PINS], uint32_t& trail_end, Gate circuit[MAX_GATES], uint32_t level_assigned[MAX_GATES]) {
@@ -334,7 +336,10 @@ solve_loop:
             }
             uint32_t backjump_level = 0;
             uint32_t UIP_step;
-            ConflictAnalysis(conflict, nodes, trail, trail_end, decision_level, antecedent, stamped, level_assigned, VMTF_queue, backjump_level, UIP_step);
+            if (!ConflictAnalysis(conflict, nodes, trail, trail_end, decision_level, antecedent, stamped, level_assigned, VMTF_queue, backjump_level, UIP_step)) {
+                backjump_level = decision_level - 1;
+                UIP_step = trail_lim[decision_level - 1];
+            }
             VMTF_next_search = VMTF_queue.head;
 
             uint32_t backtrack_step = trail_lim[backjump_level];
