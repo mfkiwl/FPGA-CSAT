@@ -103,6 +103,7 @@ struct Graph {
 
     vector<vector<sw::GateID>> occurrence_tables;
     void generateOccurrenceTables();
+    void printOccurrenceTables();
 };
 
 bool validForHardware(const Graph& graph) {
@@ -228,6 +229,16 @@ void Graph::generateOccurrenceTables() {
                 total_occurrences++;
             }
         }
+    }
+}
+
+void Graph::printOccurrenceTables() {
+    for (uint32_t gid = 0; gid < occurrence_tables.size(); gid++) {
+        cout << "Gate " << gid << ": [ ";
+        for (uint32_t i = 0; i < occurrence_tables[gid].size(); i++) {
+            cout << occurrence_tables[gid][i] << " ";
+        }
+        cout << "]" << endl;
     }
 }
 }  // namespace encoder
