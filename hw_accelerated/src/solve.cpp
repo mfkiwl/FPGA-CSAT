@@ -378,32 +378,27 @@ ConflictAnalysis_loop:
     asserting_literal = (a.gate_id, pin_value::to_polarity(asserting_value));
     asserting_assignment = {a.gate_id, asserting_value};
 
-    if (lc_end == 1) {
-        // backbone literal - doesn't need to be saved
-        learnt_node_id = node_id::kDecision;
+    if (keep_clause && lc_end > 1) {
+        assert(clauses_end < MAX_LEARNED_CLAUSES);
+
+        ClauseID learnt_clause_id = clauses_end;
+        learnt_node_id = (node_type::kClause, learnt_clause_id);
+        learnt_clause.literals[0] = asserting_literal;
+
+        // Swap in the second watcher
+        Literal temp = learnt_clause.literals[1];
+        learnt_clause.literals[1] = learnt_clause.literals[swap_index];
+        learnt_clause.literals[swap_index] = temp;
+
+        // Add the learnt_clause to the database
+        learnt_clause.next_watcher[0] = watcher_header[learnt_clause.literals[0]];
+        watcher_header[learnt_clause.literals[0]] = (learnt_clause_id, ap_uint<1>(0));
+        learnt_clause.next_watcher[1] = watcher_header[learnt_clause.literals[1]];
+        watcher_header[learnt_clause.literals[1]] = (learnt_clause_id, ap_uint<1>(1));
+        clauses[learnt_clause_id] = learnt_clause;
+        clauses_end++;
     } else {
-        if (keep_clause) {
-            assert(clauses_end < MAX_LEARNED_CLAUSES);
-
-            ClauseID learnt_clause_id = clauses_end;
-            learnt_node_id = (node_type::kClause, learnt_clause_id);
-            learnt_clause.literals[0] = asserting_literal;
-
-            // Swap in the second watcher
-            Literal temp = learnt_clause.literals[1];
-            learnt_clause.literals[1] = learnt_clause.literals[swap_index];
-            learnt_clause.literals[swap_index] = temp;
-
-            // Add the learnt_clause to the database
-            learnt_clause.next_watcher[0] = watcher_header[learnt_clause.literals[0]];
-            watcher_header[learnt_clause.literals[0]] = (learnt_clause_id, ap_uint<1>(0));
-            learnt_clause.next_watcher[1] = watcher_header[learnt_clause.literals[1]];
-            watcher_header[learnt_clause.literals[1]] = (learnt_clause_id, ap_uint<1>(1));
-            clauses[learnt_clause_id] = learnt_clause;
-            clauses_end++;
-        } else {
-            learnt_node_id = node_id::kForgot;
-        }
+        learnt_node_id = node_id::kForgot;
     }
     conflict_id++;
     return ret;
