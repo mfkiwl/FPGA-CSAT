@@ -283,13 +283,13 @@ bool ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watch
                 Literal l;
                 l = (edge, ~pin_value::to_polarity(assigns[edge]));  // falsified
                 if (level_assigned[edge] < decision_level) {
-                    if (lc_end == MAX_LITERALS_PER_CLAUSE) {
+                    if (level_assigned[edge] > backjump_level) {
+                        backjump_level = level_assigned[edge];
+                        swap_index = lc_end;
+                    }
+                    if (lc_end >= MAX_LITERALS_PER_CLAUSE) {
                         keep_clause = false;
                     } else {
-                        if (level_assigned[edge] > backjump_level) {
-                            backjump_level = level_assigned[edge];
-                            swap_index = lc_end;
-                        }
                         learnt_clause.literals[lc_end] = l;
                         lc_end++;
                     }
@@ -313,13 +313,13 @@ bool ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watch
             GateID var = GateID(l(Literal::width - 1, 1));
             if (stamps[var] != conflict_id && level_assigned[var] != 0) {
                 if (level_assigned[var] < decision_level) {
-                    if (lc_end == MAX_LITERALS_PER_CLAUSE) {
+                    if (level_assigned[var] > backjump_level) {
+                        backjump_level = level_assigned[var];
+                        swap_index = lc_end;
+                    }
+                    if (lc_end >= MAX_LITERALS_PER_CLAUSE) {
                         keep_clause = false;
                     } else {
-                        if (level_assigned[var] > backjump_level) {
-                            backjump_level = level_assigned[var];
-                            swap_index = lc_end;
-                        }
                         learnt_clause.literals[lc_end] = l;  // This literal will be false because it is a prior assignment that lead to an implication
                         lc_end++;
                     }
@@ -336,6 +336,7 @@ bool ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watch
             resolveGate(GateID(nid(GateID::width - 1, 0)));
         } else {
             if (nid == node_id::kForgot) {
+                keep_clause = false;
                 ret = false;
             } else {
                 resolveClause(ClauseID(nid(ClauseID::width - 1, 0)));
