@@ -30,7 +30,7 @@ void printWatchLists(Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_G
     }
 }
 
-void printTrailSection(const uint32_t& start, const uint32_t& end, const Assignment trail[MAX_GATES], uint32_t level_assigned[MAX_GATES]) {
+void printTrailSection(const int32_t& start, const int32_t& end, const Assignment trail[MAX_GATES], uint32_t level_assigned[MAX_GATES]) {
     cout << "Printing Trail from " << start << " to " << end;
     for (int t = end - 1; t >= start; t--) {
         if (t == end - 1 || level_assigned[trail[t + 1].gate_id] != level_assigned[trail[t].gate_id]) {
@@ -279,7 +279,7 @@ bool ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watch
         const Gate g = gates[gid];
         for (Offset o = 0; o < LUT_SIZE + 1; o++) {
             GateID edge = g.edges[o];
-            if (pin_value::isAssigned(assigns[edge]) && stamps[edge] != conflict_id && level_assigned[edge] != 0) {
+            if (edge != gate_id::kNoConnect && pin_value::isAssigned(assigns[edge]) && stamps[edge] != conflict_id && level_assigned[edge] != 0) {
                 Literal l;
                 l = (edge, ~pin_value::to_polarity(assigns[edge]));  // falsified
                 if (level_assigned[edge] < decision_level) {
@@ -506,6 +506,7 @@ solve_loop:
                 Assignment a = trail[trail_lim[decision_level - 1]];
                 asserting_assignment = {a.gate_id, pin_value::inverse(a.value)};
             };
+            assert(VMTF_queue.size() == num_gates);
             VMTF_next_search = VMTF_queue.head;
 
             uint32_t backtrack_step = trail_lim[backjump_level];

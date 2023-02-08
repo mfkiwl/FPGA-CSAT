@@ -150,6 +150,7 @@ struct ArrayQueue {
         array[num_gates - 1].forward = gate_id::kNoConnect;
     };
     void bump(GateID g) {
+        assert(g != gate_id::kNoConnect);
         if (g != head) {
             // Detatch
             array[array[g].backward].forward = array[g].forward;
@@ -168,8 +169,32 @@ struct ArrayQueue {
         GateID forward;
         GateID backward;
     };
+    void print() {
+        GateID node = head;
+        int count = 0;
+        while (node != gate_id::kNoConnect) {
+            cout << node << " -> ";
+            if ((++count % 8) == 0) {
+                cout << "\n";
+            }
+            if (array[node].forward != gate_id::kNoConnect) {
+                assert(array[array[node].forward].backward == node);
+            }
+            node = array[node].forward;
+        }
+        cout << "[X] count = " << count << endl;
+    }
+    uint32_t size() {
+        GateID node = head;
+        int count = 0;
+        while (node != gate_id::kNoConnect) {
+            count++;
+            node = array[node].forward;
+        }
+        return count;
+    }
 
-    size_t head;
+    GateID head;
     Entry array[MAX_GATES];
 };
 
