@@ -271,8 +271,6 @@ bool ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watch
     backjump_level = 0;
     uint16_t swap_index = 0;
     bool ret = true;
-    uint32_t bump_count = 0;
-    bool permit_bump = true;
     bool keep_clause = true;
 
     auto resolveGate = [&](GateID gid) {
@@ -296,13 +294,13 @@ bool ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watch
                 } else if (level_assigned[edge] == decision_level) {
                     needs_resolution_count++;
                 }
+                VMTF_queue.bump(edge);
                 stamps[edge] = conflict_id;
             }
         }
     };
 
     auto resolveClause = [&](ClauseID cid) {
-        permit_bump = false;
         const Clause clause = clauses[cid];
         // clause.print();
         for (uint32_t i = 0; i < MAX_LITERALS_PER_CLAUSE; i++) {
@@ -326,6 +324,7 @@ bool ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watch
                 } else if (level_assigned[var] == decision_level) {
                     needs_resolution_count++;
                 }
+                VMTF_queue.bump(var);
                 stamps[var] = conflict_id;
             }
         }
@@ -363,12 +362,7 @@ ConflictAnalysis_loop:
             t--;
         }
         a = trail[t];
-        if (permit_bump) {
-            VMTF_queue.bump(a.gate_id);
-            bump_count++;
-        }
         node_to_resolve = antecedent[a.gate_id];
-        // cout << "bumping " << a.gate_id.to_string(10) << " Antecent = " << node_to_resolve << endl;
         TrailPop(trail, trail_end, assigns, level_assigned);
         needs_resolution_count--;
     } while (needs_resolution_count > 0);
