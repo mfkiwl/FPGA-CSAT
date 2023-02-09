@@ -1,0 +1,10 @@
+# This demonstrates the power of clause learning. In future conflict analysis, we can resolve with the learned clause and backtrack further
+INORDER = a b c d e f g;
+OUTORDER = sat;
+new_w0_ = (c * (a + !b) * (!a + b)) + (!c * ((!a * b) + (a * !b)));
+new_w1_ = (e * (c + !d) * (!c + d)) + (!e * ((!c * d) + (c * !d)));
+new_w2_ = (!d * e) + (d * !e);
+new_w3_ = (g * (a + !f) * (!a + f)) + (!g * ((!a * f) + (a * !f)));
+new_w4_ = (!f * g) + (f * !g);
+sat = new_w4_ * new_w3_ * new_w2_ * new_w0_ * new_w1_;
+

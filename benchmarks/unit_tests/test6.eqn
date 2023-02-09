@@ -1,0 +1,9 @@
+# Clause Learning test - ~a is learned in several clauses before we identify it as a backbone literal
+INORDER = a b c d e f;
+OUTORDER = sat;
+new_w0_ = (!d + (c * (a + !b) * (!a + b)) + (!c * ((!a * b) + (a * !b)))) * (d + ((!c + (!a * b) + (a * !b)) * (c + ((a + !b) * (!a + b)))));
+new_w1_ = (f * (a + !e) * (!a + e)) + (!f * ((!a * e) + (a * !e)));
+new_w2_ = (!c * d) + (c * !d);
+new_w3_ = (!e * f) + (e * !f);
+sat = new_w3_ * new_w2_ * new_w0_ * new_w1_;
+

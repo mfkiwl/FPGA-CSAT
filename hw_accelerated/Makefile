@@ -63,8 +63,8 @@ $(BUILD_DIR)/$(KERNEL).xclbin: $(TEMP_DIR)/$(KERNEL).xo
 	v++ -p $(LINK_OUTPUT) $(VPP_FLAGS) --package.out_dir $(PACKAGE_OUT) -o $(BUILD_DIR)/$(KERNEL).xclbin
 
 ############################## Setting Rules for Host (Building Host Executable) ##############################
-$(EXECUTABLE): $(HOST_SRCS) | check-xrt
-	g++ -o $@ $^ $(CXXFLAGS) $(LDFLAGS)
+$(EXECUTABLE): $(HOST_SRCS) $(HEADERS) | check-xrt
+	g++ -o $@ $(HOST_SRCS) $(CXXFLAGS) $(LDFLAGS)
 
 emconfig:$(EMCONFIG_DIR)/emconfig.json
 $(EMCONFIG_DIR)/emconfig.json:
