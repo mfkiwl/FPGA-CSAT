@@ -20,6 +20,7 @@ const GateID NO_CONNECT = GateID(-1);
 const GateID DECISION = GateID(-2);
 const GateID SELF = GateID(-3);
 const GateID LEARNED = GateID(-4);  // placeholder
+const GateID CONST1 = GateID(-5);
 
 /* Struct containing all the necesary information to form the circuit graph */
 struct GateNode {

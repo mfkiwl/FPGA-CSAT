@@ -4,14 +4,15 @@ module imply_tb();
     parameter LUT_SIZE = 8;
     parameter TRUTH_TABLE_BITS = 1 << LUT_SIZE;
     parameter [1:0] ZERO = 2'b00;
-    parameter [1:0] ONE = 2'b10;
+    parameter [1:0] ONE = 2'b01;
     parameter [1:0] UNKNOWN = 2'b11;
 
     reg [2*LUT_SIZE + 1:0] pins;
     reg [TRUTH_TABLE_BITS - 1:0] tt;
     wire [2*LUT_SIZE + 1:0] implied_pins;
+    wire conflict;
 
-    imply #(.LUT_SIZE(LUT_SIZE)) uut(.pins(pins), .tt(tt), .implied_pins(implied_pins));
+    imply #(.LUT_SIZE(LUT_SIZE)) uut(.pins(pins), .tt(tt), .implied_pins(implied_pins), .conflict(conflict));
 
     localparam period = 20;
 
@@ -81,10 +82,21 @@ module imply_tb();
         #period;
         if(implied_pins[3:2] != ZERO)
             $display("Test failed for AND input (0)");
+
+        // Conflict Detection (AND)
+        pins[1:0] = ZERO;
+        pins[3:2] = ZERO;
+        pins[2*LUT_SIZE + 1 : 2*LUT_SIZE] = ONE;
+        #period;
+        if(conflict != 1'b1)
+            $display("Test failed for conflicting AND");
+
+        pins[2*LUT_SIZE + 1 : 2*LUT_SIZE] = ZERO;
+        #period;
+        if(conflict != 1'b0)
+            $display("Test failed for non-conflicting AND");
         
         $display("Test Finished!");
         $finish;
     end
-
-
 endmodule

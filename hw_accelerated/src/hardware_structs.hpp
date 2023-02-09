@@ -8,45 +8,115 @@
 typedef ap_uint<TRUTH_TABLE_BITS> TruthTable;
 typedef ap_uint<GATE_ID_BITS> GateID;
 typedef ap_uint<OFFSET_BITS> Offset;
+typedef ap_uint<OCCURRENCE_BITS> OccurrenceIndex;
 typedef ap_uint<2> PinValue;
 typedef ap_uint<1> Direction;
+typedef ap_uint<CLAUSE_ID_BITS> ClauseID;
+typedef ap_uint<CLAUSE_ID_BITS + 1> Watcher;
+typedef ap_uint<GATE_ID_BITS + 1> Literal;
+typedef ap_uint<max(GATE_ID_BITS, CLAUSE_ID_BITS) + 1> NodeID;
 
-const Direction OUTWARDS = 0b0;
-const Direction INWARDS = 0b1;
+void printLiteral(const Literal& l);
+void printWatcher(const Watcher& w);
 
-const GateID NO_CONNECT = GateID(sw::NO_CONNECT);
-const GateID DECISION = GateID(sw::DECISION);
-const GateID SELF = GateID(sw::SELF);
-const GateID LEARNED = GateID(sw::LEARNED);  // placeholder
+namespace node_type {
+const ap_uint<1> kGate = 0;
+const ap_uint<1> kClause = 1;
+}  // namespace node_type
 
-const PinValue ZERO = 0b00;
-const PinValue ONE = 0b01;
-const PinValue DONTCARE = 0b10;
-const PinValue UNKNOWN = 0b11;
+namespace node_id {
+const NodeID kDecision = NodeID(-1);
+const NodeID kForgot = NodeID(-2);  // for learned nodes that aren't stored
+}  // namespace node_id
+
+namespace watcher {
+const Watcher kInvalid = Watcher(-1);
+}
+
+namespace literal {
+const Literal kInvalid = Literal(-1);
+}
+
+namespace direction {
+const Direction kSourcewards = 0;
+const Direction kSinkwards = 1;  // Coherency
+}  // namespace direction
+
+namespace gate_id {
+const GateID kNoConnect = GateID(sw::NO_CONNECT);
+}
+
+namespace pin_value {
+const PinValue kZero = 0b00;
+const PinValue kOne = 0b01;
+const PinValue kUnknownPS0 = 0b10;
+const PinValue kUnknownPS1 = 0b11;
+
+bool isAssigned(const PinValue& pv) {
+    return pv == kZero || pv == kOne;
+}
+
+bool isUnknown(const PinValue& pv) {
+    return pv == kUnknownPS0 || pv == kUnknownPS1;
+}
+
+PinValue inverse(const PinValue& pv) {
+#pragma HLS INLINE
+    assert(isAssigned(pv));
+    if (pv == kZero) {
+        return kOne;
+    } else {
+        return kZero;
+    }
+}
+
+PinValue savePhase(const PinValue& pv) {
+#pragma HLS INLINE
+    assert(isAssigned(pv));
+    if (pv == kZero) {
+        return kUnknownPS0;
+    } else {
+        return kUnknownPS1;
+    }
+}
+
+PinValue restorePhase(const PinValue& pv) {
+#pragma HLS INLINE
+    assert(isUnknown(pv));
+    if (pv == kUnknownPS0) {
+        return kZero;
+    } else {
+        return kOne;
+    }
+}
+
+ap_uint<1> to_polarity(const PinValue& pv) {
+#pragma HLS INLINE
+    assert(isAssigned(pv));
+    if (pv == kZero) {
+        return ap_uint<1>(1);  // negative (inverted) polarity
+    } else {
+        return ap_uint<1>(0);  // positive (non-inverted) polarity
+    }
+}
+}  // namespace pin_value
 
 const uint32_t UNASSIGNED = -1;
 
-struct GateNode {
-    GateNode() {}
-    GateNode(sw::GateNode gn) {
-        for (size_t i = 0; i < LUT_SIZE; i++) {
-            inputs[i] = gn.inputs[i];
+struct Gate {
+    Gate(){};
+    Gate(const sw::GateNode& gn, const GateID& gid) {
+        for (Offset o = 0; o < LUT_SIZE; o++) {
+            edges[o] = gn.inputs[o];
         }
-        size_t i;
-        for (i = 0; i < gn.outputs.size(); i++) {
-            outputs[i] = gn.outputs[i];
-        }
-        for (; i < MAX_FANOUT; i++) {
-            outputs[i].gate = sw::NO_CONNECT;
-        }
+        edges[LUT_SIZE] = gid;
     }
-    uint32_t inputs[LUT_SIZE];
-    sw::OutPin outputs[MAX_FANOUT];
+    GateID edges[LUT_SIZE + 1];
 };
 
-struct Gate : ap_uint<2 * (LUT_SIZE + 1)> {
+struct Pins : ap_uint<2 * (LUT_SIZE + 1)> {
     using ap_uint<2 * (LUT_SIZE + 1)>::ap_uint;
-    ap_range_ref<width, false> input(Offset i) {
+    ap_range_ref<width, false> index(Offset i) {
         return this->range(2 * i + 1, 2 * i);
     }
     ap_range_ref<width, false> output() {
@@ -54,85 +124,43 @@ struct Gate : ap_uint<2 * (LUT_SIZE + 1)> {
     }
 };
 
-struct Pin {
-    bool isDECISION() {
-        return gate == DECISION;
-    }
-    bool isSELF() {
-        return gate == SELF;
-    }
-    bool isLEARNED() {
-        return gate == LEARNED;
-    }
-    GateID gate;
+struct Vertex {
+    GateID gate_id;
     Offset offset;
 };
 
-struct Propagation {
-    Propagation() {}
-    Propagation(GateID from, GateID to, Offset offset, Direction d, PinValue val) : from_gate(from), to_gate(to), sink_offset(offset), direction(d), value(val) {}
-    GateID from_gate;
-    GateID to_gate;
-    Offset sink_offset;
-    Direction direction;
+struct Assignment {
+    Assignment() : gate_id(gate_id::kNoConnect), value(0){};
+    Assignment(GateID gate_id, PinValue value) : gate_id(gate_id), value(value){};
+    GateID gate_id;
     PinValue value;
     void print() const {
-        if (direction == OUTWARDS) {
-            cout << "OUTWARDS: " << from_gate << "[" << sink_offset << "] -> " << to_gate << " ( = " << value << " ) ";
-        } else {
-            cout << "INWARDS: " << from_gate << " -> " << to_gate << "[" << sink_offset << "] ( = " << value << " ) ";
-        }
-    }
-};
-
-struct PinAssignment {
-    PinAssignment() {}
-    PinAssignment(GateID to, PinValue val) : to_gate(to), direction(OUTWARDS), value(val) {}
-    PinAssignment(GateID to, Offset offset, PinValue val) : to_gate(to), to_offset(offset), direction(INWARDS), value(val) {}
-    GateID to_gate;
-    Offset to_offset;
-    Direction direction;
-    PinValue value;
-    void print() const {
-        if (direction == OUTWARDS) {
-            cout << "OUTWARDS: " << to_gate << " = " << value << endl;
-        } else {
-            cout << "INWARDS: " << to_gate
-                 << "[" << to_offset << "] = " << value << endl;
-        }
-    }
-};
-
-struct Conflict {
-    GateID source_gate;
-    GateID sink_gate;
-    Offset sink_offset;
-    void print() const {
-        cout << source_gate << " <-> " << sink_gate << "[" << sink_offset << "]" << endl;
+        cout << gate_id.to_string(10) << " = " << value;
     }
 };
 
 struct ArrayQueue {
-    ArrayQueue(const uint32_t& num_gates) {
+    ArrayQueue(const uint32_t num_gates) {
         head = 0;
-        array[0].backward = NO_CONNECT;
+        array[0].backward = gate_id::kNoConnect;
         for (unsigned int i = 0; i < num_gates - 1; i++) {
             array[i].forward = i + 1;
             array[i + 1].backward = i;
         }
-        array[num_gates - 1].forward = NO_CONNECT;
+        array[num_gates - 1].forward = gate_id::kNoConnect;
     };
     void bump(GateID g) {
+        assert(g != gate_id::kNoConnect);
         if (g != head) {
             // Detatch
             array[array[g].backward].forward = array[g].forward;
-            if (array[g].forward != NO_CONNECT) {
+            if (array[g].forward != gate_id::kNoConnect) {
                 array[array[g].forward].backward = array[g].backward;
             }
             // Queue at head
             array[head].backward = g;
             array[g].forward = head;
-            array[g].backward = NO_CONNECT;
+            array[g].backward = gate_id::kNoConnect;
             head = g;
         }
     };
@@ -141,7 +169,79 @@ struct ArrayQueue {
         GateID forward;
         GateID backward;
     };
+    void print() {
+        GateID node = head;
+        int count = 0;
+        while (node != gate_id::kNoConnect) {
+            cout << node << " -> ";
+            if ((++count % 8) == 0) {
+                cout << "\n";
+            }
+            if (array[node].forward != gate_id::kNoConnect) {
+                assert(array[array[node].forward].backward == node);
+            }
+            node = array[node].forward;
+        }
+        cout << "[X] count = " << count << endl;
+    }
+    uint32_t size() {
+        GateID node = head;
+        int count = 0;
+        while (node != gate_id::kNoConnect) {
+            count++;
+            node = array[node].forward;
+        }
+        return count;
+    }
 
-    size_t head;
+    GateID head;
     Entry array[MAX_GATES];
 };
+
+struct Clause {
+    Clause() {
+        for (unsigned int i = 0; i < MAX_LITERALS_PER_CLAUSE; i++) {
+            literals[i] = literal::kInvalid;
+        }
+        next_watcher[0] = watcher::kInvalid;
+        next_watcher[1] = watcher::kInvalid;
+    }
+    Literal literals[MAX_LITERALS_PER_CLAUSE];
+    Watcher next_watcher[2];
+
+    void print() const {
+        cout << "{ ";
+        for (unsigned int i = 0; i < MAX_LITERALS_PER_CLAUSE; i++) {
+            const Literal l = literals[i];
+            if (l != literal::kInvalid) {
+                printLiteral(l);
+            }
+        }
+        cout << "} ";
+    }
+};
+
+ostream& operator<<(ostream& stream, const NodeID& nid) {
+    if (nid[NodeID::width - 1] == node_type::kGate) {
+        stream << "Gate-";
+    } else {
+        stream << "Clause-";
+    }
+    stream << nid(NodeID::width - 2, 0).to_string(10);
+    return stream;
+}
+
+void printLiteral(const Literal& l) {
+    if (l.test(0)) {
+        cout << "~";
+    }
+    cout << l(Literal::width - 1, 1).to_string(10) << " ";
+}
+
+void printWatcher(const Watcher& w) {
+    if (w == watcher::kInvalid) {
+        cout << "X ";
+    } else {
+        cout << w(Watcher::width - 1, 1).to_string(10) << "[" << w(0, 0).to_string(10) << "] ";
+    }
+}

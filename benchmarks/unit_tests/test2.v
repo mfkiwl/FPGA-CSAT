@@ -2,13 +2,13 @@
 
 module test2 ( 
     a, b, c,
-    z  );
+    sat  );
   input  a, b, c;
-  output z;
+  output sat;
   wire new_new_n0__, new_new_n1__;
   assign new_new_n0__ = ~c ^ (~a ^ b);
   assign new_new_n1__ = b ^ c;
-  assign z = new_new_n0__ & new_new_n1__;
+  assign sat = new_new_n0__ & new_new_n1__;
 endmodule
 
 

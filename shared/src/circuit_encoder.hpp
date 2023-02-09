@@ -99,8 +99,11 @@ struct Graph {
     vector<string> primary_outputs;
     unordered_map<string, sw::GateID> name_map;
     vector<string> gate_map;
-    uint32_t minor_pin_count;
-
+    uint32_t total_occurrences;
+    vector<vector<sw::GateID>> occurrence_tables;
+  
+    void generateOccurrenceTables();
+    void printOccurrenceTables();
     void printNodes();
 };
 
@@ -108,12 +111,6 @@ bool validForHardware(const Graph& graph) {
     if (graph.nodes.size() > MAX_GATES) {
         cout << "MAX_GATES constraint not satisfied: " << graph.nodes.size() << " > " << MAX_GATES << endl;
         return false;
-    }
-    for (const auto& g : graph.nodes) {
-        if (g.outputs.size() > MAX_FANOUT) {
-            cout << "MAX_FANOUT constraint not satisfied: " << g.outputs.size() << " > " << MAX_FANOUT << endl;
-            return false;
-        }
     }
     return true;
 }
@@ -175,7 +172,6 @@ void parseEQN(string eqn_file_path, Graph& graph) {
     graph.truth_tables.resize(signals.size());
     graph.primary_inputs = primary_inputs;
     graph.primary_outputs = primary_outputs;
-    graph.minor_pin_count = 0;
     graph.name_map = name_map;
     graph.gate_map.resize(signals.size());
     for (const auto& p : name_map) {
@@ -206,7 +202,6 @@ void parseEQN(string eqn_file_path, Graph& graph) {
             sw::GateID predecessor = name_map.at(signal.inputs[offset]);
 
             graph.nodes[predecessor].outputs.push_back(pin);
-            graph.minor_pin_count++;
             graph.nodes[gate].inputs[offset] = (predecessor);
         }
 
@@ -214,6 +209,39 @@ void parseEQN(string eqn_file_path, Graph& graph) {
         for (uint8_t offset = signal.inputs.size(); offset < LUT_SIZE; offset++) {
             graph.nodes[gate].inputs[offset] = sw::NO_CONNECT;
         }
+    }
+    graph.generateOccurrenceTables();
+}
+
+void Graph::generateOccurrenceTables() {
+    total_occurrences = 0;
+    occurrence_tables = vector<vector<sw::GateID>>(nodes.size());
+    for (uint32_t gid = 0; gid < nodes.size(); gid++) {
+        // Whenever net N changes value, we want to run imply on Gate N (because Gate N's ouptut is net N),
+        // unless Gate N is a primary input, then we don't want to run imply (because primary input nodes are always satified)
+        if (!nodes[gid].is_PI) {
+            occurrence_tables[gid].push_back(gid);  // Each Gate's output is its own GateID
+            total_occurrences++;
+        }
+    }
+
+    for (uint32_t gid = 0; gid < nodes.size(); gid++) {
+        for (uint8_t o = 0; o < LUT_SIZE; o++) {
+            if (nodes[gid].inputs[o] != sw::NO_CONNECT) {
+                occurrence_tables[nodes[gid].inputs[o]].push_back(gid);
+                total_occurrences++;
+            }
+        }
+    }
+}
+
+void Graph::printOccurrenceTables() {
+    for (uint32_t gid = 0; gid < occurrence_tables.size(); gid++) {
+        cout << "Gate " << gid << ": [ ";
+        for (uint32_t i = 0; i < occurrence_tables[gid].size(); i++) {
+            cout << occurrence_tables[gid][i] << " ";
+        }
+        cout << "]" << endl;
     }
 }
 
