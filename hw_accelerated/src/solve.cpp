@@ -273,76 +273,6 @@ bool ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watch
     bool ret = true;
     bool keep_clause = true;
 
-    auto resolveGate = [&](GateID gid) {
-        const Gate g = gates[gid];
-        for (Offset o = 0; o < LUT_SIZE + 1; o++) {
-            GateID edge = g.edges[o];
-            if (edge != gate_id::kNoConnect && pin_value::isAssigned(assigns[edge]) && stamps[edge] != conflict_id && level_assigned[edge] != 0) {
-                Literal l;
-                l = (edge, ~pin_value::to_polarity(assigns[edge]));  // falsified
-                if (level_assigned[edge] < decision_level) {
-                    if (level_assigned[edge] > backjump_level) {
-                        backjump_level = level_assigned[edge];
-                        swap_index = lc_end;
-                    }
-                    if (lc_end >= MAX_LITERALS_PER_CLAUSE) {
-                        keep_clause = false;
-                    } else {
-                        learnt_clause.literals[lc_end] = l;
-                        lc_end++;
-                    }
-                } else if (level_assigned[edge] == decision_level) {
-                    needs_resolution_count++;
-                }
-                VMTF_queue.bump(edge);
-                stamps[edge] = conflict_id;
-            }
-        }
-    };
-
-    auto resolveClause = [&](ClauseID cid) {
-        const Clause clause = clauses[cid];
-        // clause.print();
-        for (uint32_t i = 0; i < MAX_LITERALS_PER_CLAUSE; i++) {
-            const Literal l = clause.literals[i];
-            if (l == literal::kInvalid) {
-                break;
-            }
-            GateID var = GateID(l(Literal::width - 1, 1));
-            if (stamps[var] != conflict_id && level_assigned[var] != 0) {
-                if (level_assigned[var] < decision_level) {
-                    if (level_assigned[var] > backjump_level) {
-                        backjump_level = level_assigned[var];
-                        swap_index = lc_end;
-                    }
-                    if (lc_end >= MAX_LITERALS_PER_CLAUSE) {
-                        keep_clause = false;
-                    } else {
-                        learnt_clause.literals[lc_end] = l;  // This literal will be false because it is a prior assignment that lead to an implication
-                        lc_end++;
-                    }
-                } else if (level_assigned[var] == decision_level) {
-                    needs_resolution_count++;
-                }
-                VMTF_queue.bump(var);
-                stamps[var] = conflict_id;
-            }
-        }
-    };
-    
-    auto resolveNode = [&](NodeID nid) {
-        if (nid[NodeID::width - 1] == node_type::kGate) {
-            resolveGate(GateID(nid(GateID::width - 1, 0)));
-        } else {
-            if (nid == node_id::kForgot) {
-                keep_clause = false;
-                ret = false;
-            } else {
-                resolveClause(ClauseID(nid(ClauseID::width - 1, 0)));
-            }
-        }
-    };
-
     // cout << "Conflict Analysis: ";
     // cout << "Trail:";
     // printTrail(trail, trail_end, level_assigned);
@@ -354,8 +284,68 @@ ConflictAnalysis_loop:
     Assignment a;
     do {
         assert(node_to_resolve != node_id::kDecision);  // otherwise we would have found UIP
-        // cout << "resolving " << node_to_resolve << endl;
-        resolveNode(node_to_resolve);
+
+        // Resolve Node using stamping method: only "anchor" literals assigned at a lower decision level are stored in the learnt_clause
+        if (node_to_resolve == node_id::kForgot) {
+            keep_clause = false;
+            ret = false;
+        } else if (node_to_resolve[NodeID::width - 1] == node_type::kGate) {
+            const GateID gid = node_to_resolve(GateID::width - 1, 0);
+            const Gate g = gates[gid];
+            for (Offset o = 0; o < LUT_SIZE + 1; o++) {
+                GateID edge = g.edges[o];
+                if (edge != gate_id::kNoConnect && pin_value::isAssigned(assigns[edge]) && stamps[edge] != conflict_id && level_assigned[edge] != 0) {
+                    Literal l;
+                    l = (edge, ~pin_value::to_polarity(assigns[edge]));
+                    if (level_assigned[edge] < decision_level) {
+                        if (level_assigned[edge] > backjump_level) {
+                            backjump_level = level_assigned[edge];
+                            swap_index = lc_end;
+                        }
+                        if (lc_end >= MAX_LITERALS_PER_CLAUSE) {
+                            keep_clause = false;
+                        } else {
+                            learnt_clause.literals[lc_end] = l;
+                            lc_end++;
+                        }
+                    } else if (level_assigned[edge] == decision_level) {
+                        needs_resolution_count++;
+                    }
+                    VMTF_queue.bump(edge);
+                    stamps[edge] = conflict_id;
+                }
+            }
+        } else {
+            assert(node_to_resolve[NodeID::width - 1] == node_type::kClause);
+            cout << "resolving clause" << endl;
+            ClauseID cid = node_to_resolve(ClauseID::width - 1, 0);
+            const Clause clause = clauses[cid];
+            for (uint32_t i = 0; i < MAX_LITERALS_PER_CLAUSE; i++) {
+                const Literal l = clause.literals[i];
+                if (l == literal::kInvalid) {
+                    break;
+                }
+                GateID var = GateID(l(Literal::width - 1, 1));
+                if (stamps[var] != conflict_id && level_assigned[var] != 0) {
+                    if (level_assigned[var] < decision_level) {
+                        if (level_assigned[var] > backjump_level) {
+                            backjump_level = level_assigned[var];
+                            swap_index = lc_end;
+                        }
+                        if (lc_end >= MAX_LITERALS_PER_CLAUSE) {
+                            keep_clause = false;
+                        } else {
+                            learnt_clause.literals[lc_end] = l;
+                            lc_end++;
+                        }
+                    } else if (level_assigned[var] == decision_level) {
+                        needs_resolution_count++;
+                    }
+                    VMTF_queue.bump(var);
+                    stamps[var] = conflict_id;
+                }
+            }
+        }
         t--;  // t was at trail_end or the already resolved assignment
         while (stamps[trail[t].gate_id] != conflict_id) {
             TrailPop(trail, trail_end, assigns, level_assigned);
@@ -490,10 +480,10 @@ solve_loop:
             uint32_t backjump_level;
             Assignment asserting_assignment;
             NodeID learnt_node_id;
-            uint32_t asserting_location = AssertingLocation(conflict, gates, clauses, assigns, location);
-            assert(asserting_location + 1 >= q_head);
-            //  cout << "Preemptively Canceling: (q_head = " << q_head << ") ";
-            //  printTrailSection(asserting_location, trail_end, trail, level_assigned);
+            // uint32_t asserting_location = AssertingLocation(conflict, gates, clauses, assigns, location);
+            // assert(asserting_location + 1 >= q_head);
+            // cout << "Preemptively Canceling: (q_head = " << q_head << ") ";
+            // printTrailSection(asserting_location, trail_end, trail, level_assigned);
             // CancelUntil(asserting_location + 1, trail, trail_end, assigns, level_assigned);
             if (!ConflictAnalysis(conflict, gates, watcher_header, clauses, clauses_end, assigns, trail, trail_end, decision_level, antecedent, stamps, level_assigned, VMTF_queue, backjump_level, asserting_assignment, learnt_node_id)) {
                 backjump_level = decision_level - 1;
@@ -530,7 +520,6 @@ solve_loop:
             // branching_assignment.print();
             // cout << " @ " << decision_level << endl;
             Enqueue(branching_assignment, node_id::kDecision, assigns, antecedent, level_assigned, location, decision_level, trail, trail_end);
-
         }
     }
 }
