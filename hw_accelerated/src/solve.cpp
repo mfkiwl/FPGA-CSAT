@@ -329,7 +329,7 @@ bool ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watch
             }
         }
     };
-
+    
     auto resolveNode = [&](NodeID nid) {
         if (nid[NodeID::width - 1] == node_type::kGate) {
             resolveGate(GateID(nid(GateID::width - 1, 0)));
@@ -530,6 +530,7 @@ solve_loop:
             // branching_assignment.print();
             // cout << " @ " << decision_level << endl;
             Enqueue(branching_assignment, node_id::kDecision, assigns, antecedent, level_assigned, location, decision_level, trail, trail_end);
+
         }
     }
 }

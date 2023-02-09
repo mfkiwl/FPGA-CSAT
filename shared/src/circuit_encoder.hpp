@@ -98,12 +98,13 @@ struct Graph {
     vector<string> primary_inputs;
     vector<string> primary_outputs;
     unordered_map<string, sw::GateID> name_map;
-    unordered_map<sw::GateID, string> gate_map;
+    vector<string> gate_map;
     uint32_t total_occurrences;
-
     vector<vector<sw::GateID>> occurrence_tables;
+  
     void generateOccurrenceTables();
     void printOccurrenceTables();
+    void printNodes();
 };
 
 bool validForHardware(const Graph& graph) {
@@ -172,12 +173,14 @@ void parseEQN(string eqn_file_path, Graph& graph) {
     graph.primary_inputs = primary_inputs;
     graph.primary_outputs = primary_outputs;
     graph.name_map = name_map;
+    graph.gate_map.resize(signals.size());
     for (const auto& p : name_map) {
-        graph.gate_map.insert(std::make_pair(p.second, p.first));
+        graph.gate_map[p.second] = p.first;
     }
 
-    for (const auto& [name, signal] : signals) {
-        uint32_t gate = name_map.at(name);
+    for (size_t gate = 0; gate < graph.gate_map.size(); gate++) {
+        const string name = graph.gate_map[gate];
+        const Signal signal = signals.at(name);
 
         graph.nodes[gate].is_PI = signal.is_PI;
 
@@ -237,6 +240,23 @@ void Graph::printOccurrenceTables() {
         cout << "Gate " << gid << ": [ ";
         for (uint32_t i = 0; i < occurrence_tables[gid].size(); i++) {
             cout << occurrence_tables[gid][i] << " ";
+        }
+        cout << "]" << endl;
+    }
+}
+
+void Graph::printNodes() {
+    for (uint32_t gid = 0; gid < nodes.size(); gid++) {
+        cout << "Gate " << gid << ": inputs [ ";
+        for (uint32_t i = 0; i < LUT_SIZE; i++) {
+            if (nodes[gid].inputs[i] == sw::NO_CONNECT) {
+                break;
+            }
+            cout << nodes[gid].inputs[i] << " ";
+        }
+        cout << "] outputs [ ";
+        for (uint32_t i = 0; i < nodes[gid].outputs.size(); i++) {
+            cout << nodes[gid].outputs[i].gate << " ";
         }
         cout << "]" << endl;
     }

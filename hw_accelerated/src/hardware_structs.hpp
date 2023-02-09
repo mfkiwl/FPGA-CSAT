@@ -135,7 +135,7 @@ struct Assignment {
     GateID gate_id;
     PinValue value;
     void print() const {
-        cout << gate_id << " = " << value;
+        cout << gate_id.to_string(10) << " = " << value;
     }
 };
 
