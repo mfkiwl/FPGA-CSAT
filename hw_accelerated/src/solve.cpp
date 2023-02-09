@@ -424,6 +424,7 @@ void solve(const Gate g_gates[MAX_GATES], const PinValue g_initial_assigns[MAX_G
 
     static PinValue assigns[MAX_GATES];
     static uint32_t level_assigned[MAX_GATES];
+    static NodeID antecedent[MAX_GATES];
     static uint32_t location[MAX_GATES];
     static uint32_t stamps[MAX_GATES];
     static Watcher watcher_header[2 * MAX_GATES];
@@ -436,6 +437,7 @@ initialize_RAM:
     for (unsigned int i = 0; i < MAX_GATES; i++) {
         assigns[i] = g_initial_assigns[i];
         level_assigned[i] = UNASSIGNED;
+        antecedent[i] = gate_id::kNoConnect;
         watcher_header[2 * i] = watcher::kInvalid;
         watcher_header[2 * i + 1] = watcher::kInvalid;
         stamps[i] = -1;
@@ -454,7 +456,6 @@ initialize_RAM:
     uint32_t clauses_end = 0;
     uint32_t trail_end = 0;
     uint32_t q_head = 0;
-    static NodeID antecedent[MAX_GATES];
 
     GateID VMTF_next_search = 0;
     static ArrayQueue VMTF_queue(num_gates);
