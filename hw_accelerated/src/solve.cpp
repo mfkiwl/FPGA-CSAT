@@ -138,9 +138,9 @@ void Propagate(const Gate gates[MAX_GATES], const TruthTable truth_tables[MAX_GA
             for (Offset o = 0; o < LUT_SIZE + 1; o++) {
                 GateID edge = g.edges[o];
                 if (edge != gate_id::kNoConnect) {
-                    initial_pins.index(o) = assigns[edge];
+                    initial_pins(2 * o + 1, 2 * o) = assigns[edge];
                 } else {
-                    initial_pins.index(o) = pin_value::kUnknownPS1;  // arbitrary as the TT is not sensitive to no connect pins
+                    initial_pins(2 * o + 1, 2 * o) = pin_value::kUnknownPS1;  // arbitrary as the TT is not sensitive to no connect pins
                 }
             }
 
@@ -159,9 +159,9 @@ void Propagate(const Gate gates[MAX_GATES], const TruthTable truth_tables[MAX_GA
             }
             // Propagate new implications
             for (Offset o = 0; o < LUT_SIZE + 1; o++) {
-                if (pin_value::isAssigned(implied_pins.index(o)) && (initial_pins.index(o) != implied_pins.index(o))) {
+                if (pin_value::isAssigned(implied_pins(2 * o + 1, 2 * o)) && (initial_pins(2 * o + 1, 2 * o) != implied_pins(2 * o + 1, 2 * o))) {
                     // Enqueue
-                    const Assignment enqueue_assignment = {g.edges[o], implied_pins.index(o)};
+                    const Assignment enqueue_assignment = {g.edges[o], implied_pins(2 * o + 1, 2 * o)};
                     const NodeID enqueue_reason = (node_type::kGate, gid);
                     Enqueue(enqueue_assignment, enqueue_reason, assigns, antecedent, level_assigned, location, decision_level, trail, trail_end);
                 }

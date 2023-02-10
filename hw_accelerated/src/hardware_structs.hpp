@@ -9,6 +9,7 @@ typedef ap_uint<TRUTH_TABLE_BITS> TruthTable;
 typedef ap_uint<GATE_ID_BITS> GateID;
 typedef ap_uint<OFFSET_BITS> Offset;
 typedef ap_uint<OCCURRENCE_BITS> OccurrenceIndex;
+typedef ap_uint<2 * (LUT_SIZE + 1)> Pins;
 typedef ap_uint<2> PinValue;
 typedef ap_uint<1> Direction;
 typedef ap_uint<CLAUSE_ID_BITS> ClauseID;
@@ -112,16 +113,6 @@ struct Gate {
         edges[LUT_SIZE] = gid;
     }
     GateID edges[LUT_SIZE + 1];
-};
-
-struct Pins : ap_uint<2 * (LUT_SIZE + 1)> {
-    using ap_uint<2 * (LUT_SIZE + 1)>::ap_uint;
-    ap_range_ref<width, false> index(Offset i) {
-        return this->range(2 * i + 1, 2 * i);
-    }
-    ap_range_ref<width, false> output() {
-        return this->range(2 * LUT_SIZE + 1, 2 * LUT_SIZE);
-    }
 };
 
 struct Vertex {
