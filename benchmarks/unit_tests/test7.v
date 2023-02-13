@@ -1,4 +1,4 @@
-module test7 (a, b, c, d, e, f, sat);
+module test7 (a, b, c, d, e, f, g, sat);
   input  a, b, c, d, e, f, g;
   output sat;
   wire w0, w1, w2, w3, w4;
