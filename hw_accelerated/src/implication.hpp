@@ -42,7 +42,6 @@ void imply(const Pins pins, const TruthTable& tt, Pins& implied_pins, bool& conf
 // Mask out rows of the TT
 imply_maskout_loop:
     for (unsigned int i = 0; i < LUT_SIZE; i++) {
-#pragma HLS unroll
         if (pins(2 * i + 1, 2 * i) == pin_value::kZero) {
             mask |= MASKS.mask_tables[i];
         } else if (pins(2 * i + 1, 2 * i) == pin_value::kOne) {
@@ -60,7 +59,6 @@ imply_maskout_loop:
 // If a column only contains 1 value, it can be implied
 imply_isUnate_loop:
     for (unsigned int i = 0; i <= LUT_SIZE; i++) {
-#pragma HLS unroll
         if (i == LUT_SIZE) {
             TruthTable remaining_zeros = mask | ~tt;
             TruthTable remaining_ones = mask | tt;
