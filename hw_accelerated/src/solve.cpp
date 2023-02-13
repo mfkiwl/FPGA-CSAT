@@ -43,18 +43,18 @@ void printTrailSection(const int32_t& start, const int32_t& end, const Assignmen
     cout << endl;
 }
 
-void printTrail(const Assignment trail[MAX_GATES], const uint32_t& trail_end, uint32_t level_assigned[MAX_GATES]) {
+void printTrail(const Assignment trail[MAX_GATES], const int32_t trail_end, uint32_t level_assigned[MAX_GATES]) {
     printTrailSection(0, trail_end, trail, level_assigned);
 }
 
-void printClauses(const Clause clauses[MAX_LEARNED_CLAUSES], const uint32_t& clauses_end) {
-    for (unsigned int c = 0; c < clauses_end; c++) {
+void printClauses(const Clause clauses[MAX_LEARNED_CLAUSES], const int32_t clauses_end) {
+    for (int32_t c = 0; c < clauses_end; c++) {
         cout << c << ": ";
         clauses[c].print();
         cout << "\n";
     }
 }
-void Enqueue(const Assignment& a, const NodeID& reason, PinValue assigns[MAX_GATES], NodeID antecedent[MAX_GATES], uint32_t level_assigned[MAX_GATES], uint32_t location[MAX_GATES], const uint32_t decision_level, Assignment trail[MAX_GATES], uint32_t& trail_end) {
+void Enqueue(const Assignment& a, const NodeID& reason, PinValue assigns[MAX_GATES], NodeID antecedent[MAX_GATES], uint32_t level_assigned[MAX_GATES], uint32_t location[MAX_GATES], const uint32_t decision_level, Assignment trail[MAX_GATES], int32_t& trail_end) {
 #pragma HLS INLINE
     // cout << "Enqueue " << a.gate_id.to_string(10) << " = " << a.value.to_string(10) << " @ " << decision_level << endl;
     assert(a.gate_id != gate_id::kNoConnect);
@@ -72,11 +72,11 @@ void Cancel(const GateID& gid, PinValue assigns[MAX_GATES], uint32_t level_assig
     level_assigned[gid] = UNASSIGNED;
 }
 
-void CancelUntil(const uint32_t& backtrack_step, const Assignment trail[MAX_GATES], uint32_t& trail_end, PinValue assigns[MAX_GATES], uint32_t level_assigned[MAX_GATES]) {
+void CancelUntil(int32_t backtrack_step, const Assignment trail[MAX_GATES], int32_t& trail_end, PinValue assigns[MAX_GATES], uint32_t level_assigned[MAX_GATES]) {
     assert(backtrack_step <= trail_end);
     assert(backtrack_step > 0);
 CancelUntil_loop:
-    for (uint32_t t = trail_end - 1; t >= backtrack_step; t--) {
+    for (int32_t t = trail_end - 1; t >= backtrack_step; t--) {
         const GateID gid = trail[t].gate_id;
         Cancel(gid, assigns, level_assigned);
     }
@@ -110,13 +110,13 @@ uint32_t AssertingLocation(const NodeID nid, const Gate gates[MAX_GATES], const 
     return asserting_location;
 }
 
-void TrailPop(const Assignment trail[MAX_GATES], uint32_t& trail_end, PinValue assigns[MAX_GATES], uint32_t level_assigned[MAX_GATES]) {
+void TrailPop(const Assignment trail[MAX_GATES], int32_t& trail_end, PinValue assigns[MAX_GATES], uint32_t level_assigned[MAX_GATES]) {
     assert(trail_end > 0);
     trail_end--;
     Cancel(trail[trail_end].gate_id, assigns, level_assigned);
 }
 
-void Propagate(const Gate gates[MAX_GATES], const TruthTable truth_tables[MAX_GATES], const OccurrenceIndex occurrence_header[MAX_GATES + 1], const GateID occurrence_gids[MAX_OCCURRENCES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_GATES], PinValue assigns[MAX_GATES], Assignment trail[MAX_GATES], uint32_t& trail_end, uint32_t& q_head, uint32_t level_assigned[MAX_GATES], NodeID antecedent[MAX_GATES], uint32_t location[MAX_GATES], const uint32_t& decision_level, NodeID& conflict, uint64_t* const propagation_count, uint64_t* const imply_count) {
+void Propagate(const Gate gates[MAX_GATES], const TruthTable truth_tables[MAX_GATES], const OccurrenceIndex occurrence_header[MAX_GATES + 1], const GateID occurrence_gids[MAX_OCCURRENCES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_GATES], PinValue assigns[MAX_GATES], Assignment trail[MAX_GATES], int32_t& trail_end, int32_t& q_head, uint32_t level_assigned[MAX_GATES], NodeID antecedent[MAX_GATES], uint32_t location[MAX_GATES], const uint32_t& decision_level, NodeID& conflict, uint64_t* const propagation_count, uint64_t* const imply_count) {
     bool conflict_occurred = false;
     while (q_head < trail_end) {
         const Assignment pa = trail[q_head++];
@@ -258,14 +258,14 @@ void Propagate(const Gate gates[MAX_GATES], const TruthTable truth_tables[MAX_GA
     }
 }
 
-bool ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_LEARNED_CLAUSES], uint32_t& clauses_end, PinValue assigns[MAX_GATES], const Assignment trail[MAX_GATES], uint32_t& trail_end, const uint32_t decision_level, const NodeID antecedent[MAX_GATES], uint32_t stamps[MAX_GATES], uint32_t level_assigned[MAX_GATES], ArrayQueue& VMTF_queue, uint32_t& backjump_level, Assignment& asserting_assignment, NodeID& learnt_node_id) {
+bool ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_LEARNED_CLAUSES], int32_t& clauses_end, PinValue assigns[MAX_GATES], const Assignment trail[MAX_GATES], int32_t& trail_end, const uint32_t decision_level, const NodeID antecedent[MAX_GATES], uint32_t stamps[MAX_GATES], uint32_t level_assigned[MAX_GATES], ArrayQueue& VMTF_queue, uint32_t& backjump_level, Assignment& asserting_assignment, NodeID& learnt_node_id) {
     static uint16_t conflict_id = 0;
 
     Literal uip = literal::kInvalid;
     Clause learnt_clause;
     uint8_t lc_end = 1;  // (leave room for the asserting literal)
 
-    uint32_t t = trail_end;
+    int32_t t = trail_end;
     uint32_t needs_resolution_count = 0;
     NodeID node_to_resolve = conflict;
     backjump_level = 0;
@@ -453,9 +453,9 @@ initialize_RAM:
     static Clause clauses[MAX_LEARNED_CLAUSES];
     static uint32_t trail_lim[MAX_GATES];
     static Assignment trail[MAX_GATES];
-    uint32_t clauses_end = 0;
-    uint32_t trail_end = 0;
-    uint32_t q_head = 0;
+    int32_t clauses_end = 0;
+    int32_t trail_end = 0;
+    int32_t q_head = 0;
 
     GateID VMTF_next_search = 0;
     static ArrayQueue VMTF_queue(num_gates);
@@ -494,7 +494,7 @@ solve_loop:
             assert(VMTF_queue.size() == num_gates);
             VMTF_next_search = VMTF_queue.head;
 
-            uint32_t backtrack_step = trail_lim[backjump_level];
+            int32_t backtrack_step = trail_lim[backjump_level];
             assert(backtrack_step < MAX_GATES);
             CancelUntil(backtrack_step, trail, trail_end, assigns, level_assigned);
             q_head = trail_end;
