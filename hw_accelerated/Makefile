@@ -18,7 +18,7 @@ LDFLAGS += -L$(XILINX_XRT)/lib -pthread -lOpenCL
 LINK_OUTPUT := $(BUILD_DIR)/$(KERNEL).link.xclbin
 PACKAGE_OUT = ./package.$(TARGET)
 
-COMMONFLAGS = -I$(PROJ_ROOT)/../shared/src
+COMMONFLAGS = -I$(PROJ_ROOT)/../shared/src  -Wunused-variable
 
 HW_HEADERS := $(wildcard src/*.hpp)
 SHARED_HEADERS := $(wildcard ../shared/src/*.hpp)

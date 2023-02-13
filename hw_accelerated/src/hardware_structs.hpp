@@ -38,11 +38,6 @@ namespace literal {
 const Literal kInvalid = Literal(-1);
 }
 
-namespace direction {
-const Direction kSourcewards = 0;
-const Direction kSinkwards = 1;  // Coherency
-}  // namespace direction
-
 namespace gate_id {
 const GateID kNoConnect = GateID(sw::NO_CONNECT);
 }
@@ -113,11 +108,6 @@ struct Gate {
         edges[LUT_SIZE] = gid;
     }
     GateID edges[LUT_SIZE + 1];
-};
-
-struct Vertex {
-    GateID gate_id;
-    Offset offset;
 };
 
 struct Assignment {
