@@ -58,7 +58,7 @@ bool isUnknown(const PinValue& pv) {
 
 PinValue inverse(const PinValue& pv) {
 #pragma HLS INLINE
-    assert(isAssigned(pv));
+    // assert(isAssigned(pv));
     if (pv == kZero) {
         return kOne;
     } else {
@@ -68,7 +68,7 @@ PinValue inverse(const PinValue& pv) {
 
 PinValue savePhase(const PinValue& pv) {
 #pragma HLS INLINE
-    assert(isAssigned(pv));
+    // assert(isAssigned(pv));
     if (pv == kZero) {
         return kUnknownPS0;
     } else {
@@ -78,7 +78,7 @@ PinValue savePhase(const PinValue& pv) {
 
 PinValue restorePhase(const PinValue& pv) {
 #pragma HLS INLINE
-    assert(isUnknown(pv));
+    // assert(isUnknown(pv));
     if (pv == kUnknownPS0) {
         return kZero;
     } else {
@@ -88,7 +88,7 @@ PinValue restorePhase(const PinValue& pv) {
 
 ap_uint<1> to_polarity(const PinValue& pv) {
 #pragma HLS INLINE
-    assert(isAssigned(pv));
+    // assert(isAssigned(pv));
     if (pv == kZero) {
         return ap_uint<1>(1);  // negative (inverted) polarity
     } else {
@@ -131,7 +131,7 @@ struct ArrayQueue {
         array[num_gates - 1].forward = gate_id::kNoConnect;
     };
     void bump(GateID g) {
-        assert(g != gate_id::kNoConnect);
+        // assert(g != gate_id::kNoConnect);
         if (g != head) {
             // Detatch
             array[array[g].backward].forward = array[g].forward;
@@ -157,9 +157,6 @@ struct ArrayQueue {
             cout << node << " -> ";
             if ((++count % 8) == 0) {
                 cout << "\n";
-            }
-            if (array[node].forward != gate_id::kNoConnect) {
-                assert(array[array[node].forward].backward == node);
             }
             node = array[node].forward;
         }

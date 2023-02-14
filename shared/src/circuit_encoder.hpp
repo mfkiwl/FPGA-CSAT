@@ -178,7 +178,7 @@ void parseEQN(string eqn_file_path, Graph& graph) {
         graph.gate_map[p.second] = p.first;
     }
 
-    for (size_t gate = 0; gate < graph.gate_map.size(); gate++) {
+    for (uint32_t gate = 0; gate < graph.gate_map.size(); gate++) {
         const string name = graph.gate_map[gate];
         const Signal signal = signals.at(name);
 
