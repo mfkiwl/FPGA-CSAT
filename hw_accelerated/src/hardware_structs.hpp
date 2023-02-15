@@ -124,6 +124,7 @@ struct ArrayQueue {
     ArrayQueue(const uint32_t num_gates) {
         head = 0;
         array[0].backward = gate_id::kNoConnect;
+    initialize_ArrayQueue:
         for (unsigned int i = 0; i < num_gates - 1; i++) {
             array[i].forward = i + 1;
             array[i + 1].backward = i;
@@ -178,6 +179,7 @@ struct ArrayQueue {
 
 struct Clause {
     Clause() {
+    initialize_Clause:
         for (unsigned int i = 0; i < MAX_LITERALS_PER_CLAUSE; i++) {
             literals[i] = literal::kInvalid;
         }

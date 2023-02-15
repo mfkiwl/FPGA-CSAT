@@ -36,7 +36,7 @@ const static Masks<LUT_SIZE> MASKS;
  * If all rows are masked out, conflict will be true, and the implied_pins are undefined
  */
 
-void imply(const Pins pins, const TruthTable& tt, Pins& implied_pins, bool& conflict) {
+void imply(const Pins pins, const TruthTable tt, Pins& implied_pins, bool& conflict) {
     TruthTable mask = 0;
 
 // Mask out rows of the TT
