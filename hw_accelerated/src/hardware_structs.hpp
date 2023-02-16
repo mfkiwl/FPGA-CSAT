@@ -9,7 +9,7 @@ typedef ap_uint<TRUTH_TABLE_BITS> TruthTable;
 typedef ap_uint<GATE_ID_BITS> GateID;
 typedef ap_uint<OFFSET_BITS> Offset;
 typedef ap_uint<OCCURRENCE_BITS> OccurrenceIndex;
-typedef ap_uint<2 * (LUT_SIZE + 1)> Pins;
+typedef ap_uint<2 * PINS_PER_GATE> Pins;
 typedef ap_uint<2> PinValue;
 typedef ap_uint<1> Direction;
 typedef ap_uint<CLAUSE_ID_BITS> ClauseID;
@@ -47,6 +47,7 @@ const PinValue kZero = 0b00;
 const PinValue kOne = 0b01;
 const PinValue kUnknownPS0 = 0b10;
 const PinValue kUnknownPS1 = 0b11;
+const PinValue kDisconnect = kUnknownPS1; // Arbitrary Unknown 
 
 bool isAssigned(const PinValue& pv) {
     return pv == kZero || pv == kOne;
@@ -107,7 +108,7 @@ struct Gate {
         }
         edges[LUT_SIZE] = gid;
     }
-    GateID edges[LUT_SIZE + 1];
+    GateID edges[PINS_PER_GATE];
 };
 
 struct Assignment {

@@ -55,12 +55,16 @@ void printClauses(const Clause clauses[MAX_LEARNED_CLAUSES], const int32_t claus
     }
 }
 
-void Enqueue(const Assignment& a, const NodeID& reason, PinValue assigns[MAX_GATES], NodeID antecedent[MAX_GATES], uint32_t level_assigned[MAX_GATES], uint32_t location[MAX_GATES], const uint32_t decision_level, Assignment trail[MAX_GATES], int32_t& trail_end) {
+void Enqueue(const Assignment& a, const NodeID& reason, PinValue assigns[ASSIGN_CLONES][MAX_GATES], NodeID antecedent[MAX_GATES], uint32_t level_assigned[MAX_GATES], uint32_t location[MAX_GATES], const uint32_t decision_level, Assignment trail[MAX_GATES], int32_t& trail_end) {
 #pragma HLS INLINE
     // cout << "Enqueue " << a.gate_id.to_string(10) << " = " << a.value.to_string(10) << " @ " << decision_level << endl;
     // assert(a.gate_id != gate_id::kNoConnect);
     // assert(trail_end <= MAX_GATES);
-    assigns[a.gate_id] = a.value;
+enqueue_clone_assigns:
+    for (unsigned int ac = 0; ac < ASSIGN_CLONES; ac++) {
+#pragma HLS UNROLL
+        assigns[ac][a.gate_id] = a.value;
+    }
     level_assigned[a.gate_id] = decision_level;
     antecedent[a.gate_id] = reason;
     location[a.gate_id] = trail_end;
@@ -68,13 +72,18 @@ void Enqueue(const Assignment& a, const NodeID& reason, PinValue assigns[MAX_GAT
     trail_end++;
 }
 
-void Cancel(const GateID gid, PinValue assigns[MAX_GATES], uint32_t level_assigned[MAX_GATES]) {
+void Cancel(const GateID gid, PinValue assigns[ASSIGN_CLONES][MAX_GATES], uint32_t level_assigned[MAX_GATES]) {
 #pragma HLS INLINE
-    assigns[gid] = pin_value::savePhase(assigns[gid]);
+    const PinValue saved_val = pin_value::savePhase(assigns[0][gid]);
+cancel_clone_assigns:
+    for (unsigned int ac = 0; ac < ASSIGN_CLONES; ac++) {
+#pragma HLS UNROLL
+        assigns[ac][gid] = saved_val;
+    }
     level_assigned[gid] = UNASSIGNED;
 }
 
-void CancelUntil(int32_t backtrack_step, const Assignment trail[MAX_GATES], int32_t& trail_end, PinValue assigns[MAX_GATES], uint32_t level_assigned[MAX_GATES]) {
+void CancelUntil(int32_t backtrack_step, const Assignment trail[MAX_GATES], int32_t& trail_end, PinValue assigns[ASSIGN_CLONES][MAX_GATES], uint32_t level_assigned[MAX_GATES]) {
 #pragma HLS INLINE
     // assert(backtrack_step <= trail_end);
     // assert(backtrack_step > 0);
@@ -86,14 +95,14 @@ CancelUntil_loop:
     trail_end = backtrack_step;
 }
 
-uint32_t AssertingLocation(const NodeID nid, const Gate gates[MAX_GATES], const Clause clauses[MAX_LEARNED_CLAUSES], const PinValue assigns[MAX_GATES], uint32_t location[MAX_GATES]) {
+uint32_t AssertingLocation(const NodeID nid, const Gate gates[MAX_GATES], const Clause clauses[MAX_LEARNED_CLAUSES], const PinValue assigns[ASSIGN_CLONES][MAX_GATES], uint32_t location[MAX_GATES]) {
 #pragma HLS INLINE
     uint32_t asserting_location = 0;
     if (nid[NodeID::width - 1] == node_type::kGate) {
         const Gate g = gates[nid(GateID::width - 1, 0)];
-        for (Offset o = 0; o < LUT_SIZE + 1; o++) {
+        for (Offset o = 0; o < PINS_PER_GATE; o++) {
             const GateID edge = g.edges[o];
-            if (edge != gate_id::kNoConnect && pin_value::isAssigned(assigns[edge])) {
+            if (edge != gate_id::kNoConnect && pin_value::isAssigned(assigns[0][edge])) {
                 asserting_location = max(asserting_location, location[edge]);
             }
         }
@@ -106,7 +115,7 @@ uint32_t AssertingLocation(const NodeID nid, const Gate gates[MAX_GATES], const 
                 break;
             }
             GateID gid = l(Literal::width - 1, 1);
-            if (pin_value::isAssigned(assigns[gid])) {
+            if (pin_value::isAssigned(assigns[0][gid])) {
                 asserting_location = max(asserting_location, location[gid]);
             }
         }
@@ -114,14 +123,33 @@ uint32_t AssertingLocation(const NodeID nid, const Gate gates[MAX_GATES], const 
     return asserting_location;
 }
 
-void TrailPop(const Assignment trail[MAX_GATES], int32_t& trail_end, PinValue assigns[MAX_GATES], uint32_t level_assigned[MAX_GATES]) {
+void TrailPop(const Assignment trail[MAX_GATES], int32_t& trail_end, PinValue assigns[ASSIGN_CLONES][MAX_GATES], uint32_t level_assigned[MAX_GATES]) {
 #pragma HLS INLINE
     // assert(trail_end > 0);
     trail_end--;
     Cancel(trail[trail_end].gate_id, assigns, level_assigned);
 }
 
-void Propagate(const Gate gates[MAX_GATES], const TruthTable truth_tables[MAX_GATES], const OccurrenceIndex occurrence_header[MAX_GATES + 1], const GateID occurrence_gids[MAX_OCCURRENCES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_GATES], PinValue assigns[MAX_GATES], Assignment trail[MAX_GATES], int32_t& trail_end, int32_t& q_head, uint32_t level_assigned[MAX_GATES], NodeID antecedent[MAX_GATES], uint32_t location[MAX_GATES], const uint32_t decision_level, NodeID& conflict, uint64_t& propagation_count, uint64_t& imply_count) {
+void CollectAssigns(const PinValue assigns[ASSIGN_CLONES][MAX_GATES], const GateID edges[PINS_PER_GATE], Pins& pins) {
+#pragma HLS INLINE
+    for (int i = 0; i < PINS_PER_GATE; i += ASSIGN_CLONES) {
+#pragma HLS UNROLL
+        int burst_size = (i + ASSIGN_CLONES > PINS_PER_GATE) ? PINS_PER_GATE - i : ASSIGN_CLONES;
+    collect_assigns_burst:
+        for (int ac = 0; ac < burst_size; ac++) {
+#pragma HLS UNROLL
+            const Offset o = i + ac;
+            const GateID edge = edges[o];
+            if (edge != gate_id::kNoConnect) {
+                pins(2 * o + 1, 2 * o) = assigns[ac][edge];
+            } else {
+                pins(2 * o + 1, 2 * o) = pin_value::kDisconnect;
+            }
+        }
+    }
+}
+
+void Propagate(const Gate gates[MAX_GATES], const TruthTable truth_tables[MAX_GATES], const OccurrenceIndex occurrence_header[MAX_GATES + 1], const GateID occurrence_gids[MAX_OCCURRENCES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_GATES], PinValue assigns[ASSIGN_CLONES][MAX_GATES], Assignment trail[MAX_GATES], int32_t& trail_end, int32_t& q_head, uint32_t level_assigned[MAX_GATES], NodeID antecedent[MAX_GATES], uint32_t location[MAX_GATES], const uint32_t decision_level, NodeID& conflict, uint64_t& propagation_count, uint64_t& imply_count) {
 #pragma HLS INLINE
     bool conflict_occurred = false;
 propagate_loop:
@@ -143,15 +171,7 @@ propagate_loop:
 
             // Collect assigns for g
             Pins initial_pins;
-        collect_assigns:
-            for (Offset o = 0; o < LUT_SIZE + 1; o++) {
-                GateID edge = g.edges[o];
-                if (edge != gate_id::kNoConnect) {
-                    initial_pins(2 * o + 1, 2 * o) = assigns[edge];
-                } else {
-                    initial_pins(2 * o + 1, 2 * o) = pin_value::kUnknownPS1;  // arbitrary as the TT is not sensitive to no connect pins
-                }
-            }
+            CollectAssigns(assigns, g.edges, initial_pins);
 
             // Imply
             Pins implied_pins;
@@ -168,7 +188,7 @@ propagate_loop:
             }
 
         enqueue_new_implications:
-            for (Offset o = 0; o < LUT_SIZE + 1; o++) {
+            for (Offset o = 0; o < PINS_PER_GATE; o++) {
                 if (pin_value::isAssigned(implied_pins(2 * o + 1, 2 * o)) && (initial_pins(2 * o + 1, 2 * o) != implied_pins(2 * o + 1, 2 * o))) {
                     // Enqueue
                     const Assignment enqueue_assignment = {g.edges[o], implied_pins(2 * o + 1, 2 * o)};
@@ -197,12 +217,12 @@ propagate_loop:
             Literal literal_to_watch = falsified_literal;  // Keep watcher in list by default
 
             auto LiteralIsTrue = [&](const Literal& l) {
-                PinValue val = assigns[l(Literal::width - 1, 1)];
+                PinValue val = assigns[0][l(Literal::width - 1, 1)];
                 return (l.test(0) && val == pin_value::kZero) || (!l.test(0) && val == pin_value::kOne);
             };
 
             auto LiteralIsFalse = [&](const Literal& l) {
-                PinValue val = assigns[l(Literal::width - 1, 1)];
+                PinValue val = assigns[0][l(Literal::width - 1, 1)];
                 return (l.test(0) && val == pin_value::kOne) || (!l.test(0) && val == pin_value::kZero);
             };
 
@@ -261,7 +281,7 @@ propagate_loop:
     }
 }
 
-bool ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_LEARNED_CLAUSES], int32_t& clauses_end, PinValue assigns[MAX_GATES], const Assignment trail[MAX_GATES], int32_t& trail_end, const uint32_t decision_level, const NodeID antecedent[MAX_GATES], uint32_t stamps[MAX_GATES], uint32_t level_assigned[MAX_GATES], ArrayQueue& VMTF_queue, uint32_t& backjump_level, Assignment& asserting_assignment, NodeID& learnt_node_id) {
+bool ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_LEARNED_CLAUSES], int32_t& clauses_end, PinValue assigns[ASSIGN_CLONES][MAX_GATES], const Assignment trail[MAX_GATES], int32_t& trail_end, const uint32_t decision_level, const NodeID antecedent[MAX_GATES], uint32_t stamps[MAX_GATES], uint32_t level_assigned[MAX_GATES], ArrayQueue& VMTF_queue, uint32_t& backjump_level, Assignment& asserting_assignment, NodeID& learnt_node_id) {
 #pragma HLS INLINE
     static uint16_t conflict_id = 0;
 
@@ -290,11 +310,11 @@ ConflictAnalysis_loop:
             const GateID gid = node_to_resolve(GateID::width - 1, 0);
             const Gate g = gates[gid];
         resolve_gate_loop:
-            for (Offset o = 0; o < LUT_SIZE + 1; o++) {
+            for (Offset o = 0; o < PINS_PER_GATE; o++) {
                 GateID edge = g.edges[o];
-                if (edge != gate_id::kNoConnect && pin_value::isAssigned(assigns[edge]) && stamps[edge] != conflict_id && level_assigned[edge] != 0) {
+                if (edge != gate_id::kNoConnect && pin_value::isAssigned(assigns[0][edge]) && stamps[edge] != conflict_id && level_assigned[edge] != 0) {
                     Literal l;
-                    l = (edge, ~pin_value::to_polarity(assigns[edge]));
+                    l = (edge, ~pin_value::to_polarity(assigns[0][edge]));
                     if (level_assigned[edge] < decision_level) {
                         if (level_assigned[edge] > backjump_level) {
                             backjump_level = level_assigned[edge];
@@ -388,13 +408,13 @@ ConflictAnalysis_loop:
     return ret;
 }
 
-bool PickBranching(ArrayQueue& VMTF_queue, GateID& VMTF_next_search, uint32_t level_assigned[MAX_GATES], PinValue assigns[MAX_GATES], Assignment& branching_assignment) {
+bool PickBranching(ArrayQueue& VMTF_queue, GateID& VMTF_next_search, uint32_t level_assigned[MAX_GATES], PinValue assigns[ASSIGN_CLONES][MAX_GATES], Assignment& branching_assignment) {
 #pragma HLS INLINE
     // Search for next unknown variable
 PickBranching_loop:
     while (VMTF_next_search != gate_id::kNoConnect) {
         if (level_assigned[VMTF_next_search] == UNASSIGNED) {
-            branching_assignment = Assignment(VMTF_next_search, pin_value::restorePhase(assigns[VMTF_next_search]));
+            branching_assignment = Assignment(VMTF_next_search, pin_value::restorePhase(assigns[0][VMTF_next_search]));
             VMTF_next_search = VMTF_queue.array[VMTF_next_search].forward;
             return true;
         }
@@ -422,7 +442,8 @@ void StoreMetrics(const bool is_sat, bool* g_is_sat, const uint32_t conflict_cou
 extern "C" {
 
 void solve(const Gate g_gates[MAX_GATES], const PinValue g_initial_assigns[MAX_GATES], const TruthTable g_truth_tables[MAX_GATES], const OccurrenceIndex g_occurrence_header[MAX_GATES + 1], const GateID g_occurrence_gids[MAX_OCCURRENCES], const uint32_t num_gates, const uint32_t gate_to_satisfy, Assignment g_trail[MAX_GATES], bool* g_is_sat, uint32_t* const g_conflict_count, uint32_t* const g_decision_count, uint64_t* const g_propagation_count, uint64_t* const g_imply_count) {
-    static PinValue assigns[MAX_GATES];
+    static PinValue assigns[ASSIGN_CLONES][MAX_GATES];
+#pragma HLS array_partition variable = assigns type = complete dim = 1
     static uint32_t level_assigned[MAX_GATES];
     static NodeID antecedent[MAX_GATES];
     static uint32_t location[MAX_GATES];
@@ -435,7 +456,10 @@ void solve(const Gate g_gates[MAX_GATES], const PinValue g_initial_assigns[MAX_G
 
 initialize_RAM:
     for (unsigned int i = 0; i < MAX_GATES; i++) {
-        assigns[i] = g_initial_assigns[i];
+    initialize_RAM_assigns:
+        for (unsigned int ac = 0; ac < ASSIGN_CLONES; ac++) {
+            assigns[ac][i] = g_initial_assigns[i];
+        }
         level_assigned[i] = UNASSIGNED;
         antecedent[i] = gate_id::kNoConnect;
         watcher_header[2 * i] = watcher::kInvalid;
