@@ -443,7 +443,7 @@ extern "C" {
 
 void solve(const Gate g_gates[MAX_GATES], const PinValue g_initial_assigns[MAX_GATES], const TruthTable g_truth_tables[MAX_GATES], const OccurrenceIndex g_occurrence_header[MAX_GATES + 1], const GateID g_occurrence_gids[MAX_OCCURRENCES], const uint32_t num_gates, const uint32_t gate_to_satisfy, Assignment g_trail[MAX_GATES], bool* g_is_sat, uint32_t* const g_conflict_count, uint32_t* const g_decision_count, uint64_t* const g_propagation_count, uint64_t* const g_imply_count) {
     static PinValue assigns[ASSIGN_CLONES][MAX_GATES];
-#pragma HLS array_partition variable = assigns type = complete dim = 1
+#pragma HLS array_partition variable = assigns dim = 1 complete
     static uint32_t level_assigned[MAX_GATES];
     static NodeID antecedent[MAX_GATES];
     static uint32_t location[MAX_GATES];
