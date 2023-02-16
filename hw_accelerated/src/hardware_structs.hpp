@@ -135,10 +135,13 @@ struct ArrayQueue {
         // assert(g != gate_id::kNoConnect);
         if (g != head) {
             // Detatch
-            array[array[g].backward].forward = array[g].forward;
-            if (array[g].forward != gate_id::kNoConnect) {
-                array[array[g].forward].backward = array[g].backward;
+            const GateID left = array[g].backward;
+            const GateID right = array[g].forward;
+            array[left].forward = right;
+            if (right != gate_id::kNoConnect) {
+                array[right].backward = left;
             }
+
             // Queue at head
             array[head].backward = g;
             array[g].forward = head;

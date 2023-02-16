@@ -459,6 +459,7 @@ initialize_RAM_occurrences:
     int32_t q_head = 0;
 
     static ArrayQueue VMTF_queue(num_gates);
+#pragma HLS bind_storage variable = VMTF_queue.array type = RAM_T2P
     GateID VMTF_next_search = 0;
 
     uint32_t decision_level = 0;
