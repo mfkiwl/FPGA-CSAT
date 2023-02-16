@@ -130,8 +130,9 @@ void TrailPop(const Assignment trail[MAX_GATES], int32_t& trail_end, PinValue as
     Cancel(trail[trail_end].gate_id, assigns, level_assigned);
 }
 
-void CollectAssigns(const PinValue assigns[ASSIGN_CLONES][MAX_GATES], const GateID edges[PINS_PER_GATE], Pins& pins) {
+void CollectGateAssigns(const PinValue assigns[ASSIGN_CLONES][MAX_GATES], const GateID edges[PINS_PER_GATE], Pins& pins) {
 #pragma HLS INLINE
+CollectGateAssigns_loop:
     for (int i = 0; i < PINS_PER_GATE; i += ASSIGN_CLONES) {
 #pragma HLS UNROLL
         int burst_size = (i + ASSIGN_CLONES > PINS_PER_GATE) ? PINS_PER_GATE - i : ASSIGN_CLONES;
@@ -144,6 +145,28 @@ void CollectAssigns(const PinValue assigns[ASSIGN_CLONES][MAX_GATES], const Gate
                 pins(2 * o + 1, 2 * o) = assigns[ac][edge];
             } else {
                 pins(2 * o + 1, 2 * o) = pin_value::kDisconnect;
+            }
+        }
+    }
+}
+
+void CollectClauseValuations(const PinValue assigns[ASSIGN_CLONES][MAX_GATES], const Literal literals[MAX_LITERALS_PER_CLAUSE], LiteralValuation valuations[MAX_LITERALS_PER_CLAUSE]) {
+#pragma HLS INLINE
+CollectClauseValuations_loop:
+    for (int i = 0; i < MAX_LITERALS_PER_CLAUSE; i += ASSIGN_CLONES) {
+#pragma HLS UNROLL
+        int burst_size = (i + ASSIGN_CLONES > MAX_LITERALS_PER_CLAUSE) ? MAX_LITERALS_PER_CLAUSE - i : ASSIGN_CLONES;
+    collect_assigns_burst:
+        for (int ac = 0; ac < burst_size; ac++) {
+#pragma HLS UNROLL
+            const int o = i + ac;
+            const Literal l = literals[o];
+            if (l == literal::kInvalid) {
+                valuations[o] = literal_valuation::kFalse;
+            } else {
+                const GateID edge = l(Literal::width - 1, 1);
+                PinValue val = assigns[ac][edge];
+                valuations[o] = literal_valuation::evaluate(l, val);
             }
         }
     }
@@ -171,7 +194,7 @@ propagate_loop:
 
             // Collect assigns for g
             Pins initial_pins;
-            CollectAssigns(assigns, g.edges, initial_pins);
+            CollectGateAssigns(assigns, g.edges, initial_pins);
 
             // Imply
             Pins implied_pins;
@@ -212,52 +235,42 @@ propagate_loop:
         while (w != watcher::kInvalid) {
             const ClauseID clause_id = w(Watcher::width - 1, 1);
             const ap_uint<1> w_index = w[0];
+            const ap_uint<1> other_index = ~w_index;
             Clause clause = clauses[clause_id];
+#pragma HLS array_partition variable = clause.literals complete
             const Watcher next_watcher = clause.next_watcher[w_index];
-            Literal literal_to_watch = falsified_literal;  // Keep watcher in list by default
+            const Literal other_watched_literal = clause.literals[other_index];
+            Literal literal_to_watch = falsified_literal;  // By default, maintain watch on falsified_literal
 
-            auto LiteralIsTrue = [&](const Literal& l) {
-                PinValue val = assigns[0][l(Literal::width - 1, 1)];
-                return (l.test(0) && val == pin_value::kZero) || (!l.test(0) && val == pin_value::kOne);
-            };
+            LiteralValuation clause_valuations[MAX_LITERALS_PER_CLAUSE];
+#pragma HLS array_partition variable = clause_valuations complete
 
-            auto LiteralIsFalse = [&](const Literal& l) {
-                PinValue val = assigns[0][l(Literal::width - 1, 1)];
-                return (l.test(0) && val == pin_value::kOne) || (!l.test(0) && val == pin_value::kZero);
-            };
+            CollectClauseValuations(assigns, clause.literals, clause_valuations);
 
-            // Early termination (no search done)
-            const Literal other_watched_literal = clause.literals[~w_index];
-            if (conflict_occurred || LiteralIsTrue(other_watched_literal)) {
-                // cout << "Other is TRUE (or conflict)" << endl;
+            if (conflict_occurred || clause_valuations[other_index] == literal_valuation::kTrue) {
                 goto Next_Watcher;
             }
 
-            // Otherwise, try to swap in a non-False Literal
         non_false_literal_search:
             for (unsigned int swap_index = 2; swap_index < MAX_LITERALS_PER_CLAUSE; swap_index++) {
-                Literal l = clause.literals[swap_index];
-                if (l == literal::kInvalid) {
-                    break;
-                }
-                if (!LiteralIsFalse(l)) {
+                if (clause_valuations[swap_index] != literal_valuation::kFalse) {
                     // Swap literals in clause
-                    clause.literals[w_index] = l;
+                    literal_to_watch = clause.literals[swap_index];
+                    clause.literals[w_index] = literal_to_watch;
                     clause.literals[swap_index] = falsified_literal;
-                    literal_to_watch = l;
                     goto Next_Watcher;
                 }
             }
 
             // No swap found
-            if (LiteralIsFalse(other_watched_literal)) {
+            if (clause_valuations[other_index] == literal_valuation::kFalse) {
                 // Conflict
                 conflict = (node_type::kClause, clause_id);
                 conflict_occurred = true;
             } else {
                 // Enqueue
                 const GateID enqueue_gid = other_watched_literal(Literal::width - 1, 1);
-                const PinValue enqueue_val = other_watched_literal.test(0) ? pin_value::kZero : pin_value::kOne;
+                const PinValue enqueue_val = literal::isPositive(other_watched_literal) ? pin_value::kOne : pin_value::kZero;
 
                 const Assignment enqueue_assignment = {enqueue_gid, enqueue_val};
                 const NodeID enqueue_reason = (node_type::kClause, clause_id);
@@ -477,6 +490,7 @@ initialize_RAM_occurrences:
 
     static Clause clauses[MAX_LEARNED_CLAUSES];
     static uint32_t trail_lim[MAX_GATES];
+initialize_trail:
     static Assignment trail[MAX_GATES];
     int32_t clauses_end = 0;
     int32_t trail_end = 0;

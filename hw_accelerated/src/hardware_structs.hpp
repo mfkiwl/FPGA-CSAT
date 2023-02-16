@@ -11,6 +11,7 @@ typedef ap_uint<OFFSET_BITS> Offset;
 typedef ap_uint<OCCURRENCE_BITS> OccurrenceIndex;
 typedef ap_uint<2 * PINS_PER_GATE> Pins;
 typedef ap_uint<2> PinValue;
+typedef ap_uint<2> LiteralValuation;
 typedef ap_uint<1> Direction;
 typedef ap_uint<CLAUSE_ID_BITS> ClauseID;
 typedef ap_uint<CLAUSE_ID_BITS + 1> Watcher;
@@ -36,6 +37,14 @@ const Watcher kInvalid = Watcher(-1);
 
 namespace literal {
 const Literal kInvalid = Literal(-1);
+bool isPositive(const Literal l) {
+#pragma HLS INLINE
+    return !l.test(0); // zero is positive (non-inverted) polarity
+}
+bool isNegative(const Literal l) {
+#pragma HLS INLINE
+    return !isPositive(l);
+}
 }
 
 namespace gate_id {
@@ -47,7 +56,7 @@ const PinValue kZero = 0b00;
 const PinValue kOne = 0b01;
 const PinValue kUnknownPS0 = 0b10;
 const PinValue kUnknownPS1 = 0b11;
-const PinValue kDisconnect = kUnknownPS1; // Arbitrary Unknown 
+const PinValue kDisconnect = kUnknownPS1;  // Arbitrary Unknown
 
 bool isAssigned(const PinValue& pv) {
     return pv == kZero || pv == kOne;
@@ -97,6 +106,26 @@ ap_uint<1> to_polarity(const PinValue& pv) {
     }
 }
 }  // namespace pin_value
+
+namespace literal_valuation {
+const LiteralValuation kFalse = 0b00;
+const LiteralValuation kTrue = 0b01;
+const LiteralValuation kUnknown = 0b10;
+
+LiteralValuation evaluate(const Literal l, const PinValue val) {
+#pragma HLS INLINE
+    // assert(l != literal::kInvalid);
+    if (pin_value::isUnknown(val)) {
+        return kUnknown;
+    }
+    if((literal::isPositive(l) && val == pin_value::kOne) || (literal::isNegative(l) && val == pin_value::kZero)) {
+        return kTrue;
+    }
+    else {
+        return kFalse;
+    }
+}
+}  // namespace literal_valuation
 
 const uint32_t UNASSIGNED = -1;
 
