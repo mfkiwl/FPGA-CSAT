@@ -141,7 +141,7 @@ struct Gate {
 };
 
 struct Assignment {
-    Assignment() : gate_id(gate_id::kNoConnect), value(0){};
+    Assignment() {};
     Assignment(GateID gate_id, PinValue value) : gate_id(gate_id), value(value){};
     GateID gate_id;
     PinValue value;

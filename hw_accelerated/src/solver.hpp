@@ -25,7 +25,9 @@ class Solver {
     alignas(4096) uint32_t conflict_count;
     alignas(4096) uint32_t decision_count;
     alignas(4096) uint64_t propagation_count;
-    alignas(4096) uint64_t imply_count;
+    alignas(4096) uint64_t gate_imply_count;
+    alignas(4096) uint64_t clause_imply_count;
+    alignas(4096) uint64_t resolution_count;
     unordered_map<string, bool> satisfying_assignment;
     std::chrono::milliseconds duration;
 
@@ -100,7 +102,9 @@ void Solver::_solve() {
     conflict_count = 0;
     decision_count = 0;
     propagation_count = 0;
-    imply_count = 0;
+    gate_imply_count = 0;
+    clause_imply_count = 0;
+    resolution_count = 0;
     OCL_CHECK(err, cl::Buffer g_gates_buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(Gate) * g_gates.size(), g_gates.data(), &err));
     OCL_CHECK(err, cl::Buffer g_initial_assigns_buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(PinValue) * g_initial_assigns.size(), g_initial_assigns.data(), &err));
     OCL_CHECK(err, cl::Buffer g_truth_tables_buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(TruthTable) * g_truth_tables.size(), g_truth_tables.data(), &err));
@@ -112,7 +116,9 @@ void Solver::_solve() {
     OCL_CHECK(err, cl::Buffer conflict_count_buffer(context, CL_MEM_USE_HOST_PTR, sizeof(conflict_count), &conflict_count, &err));
     OCL_CHECK(err, cl::Buffer decision_count_buffer(context, CL_MEM_USE_HOST_PTR, sizeof(decision_count), &decision_count, &err));
     OCL_CHECK(err, cl::Buffer propagation_count_buffer(context, CL_MEM_USE_HOST_PTR, sizeof(propagation_count), &propagation_count, &err));
-    OCL_CHECK(err, cl::Buffer imply_count_buffer(context, CL_MEM_USE_HOST_PTR, sizeof(imply_count), &imply_count, &err));
+    OCL_CHECK(err, cl::Buffer gate_imply_count_buffer(context, CL_MEM_USE_HOST_PTR, sizeof(gate_imply_count), &gate_imply_count, &err));
+    OCL_CHECK(err, cl::Buffer clause_imply_count_buffer(context, CL_MEM_USE_HOST_PTR, sizeof(clause_imply_count), &clause_imply_count, &err));
+    OCL_CHECK(err, cl::Buffer resolution_count_buffer(context, CL_MEM_USE_HOST_PTR, sizeof(resolution_count), &resolution_count, &err));
 
     OCL_CHECK(err, err = solve_kernel.setArg(0, g_gates_buffer));
     OCL_CHECK(err, err = solve_kernel.setArg(1, g_initial_assigns_buffer));
@@ -126,7 +132,9 @@ void Solver::_solve() {
     OCL_CHECK(err, err = solve_kernel.setArg(9, conflict_count_buffer));
     OCL_CHECK(err, err = solve_kernel.setArg(10, decision_count_buffer));
     OCL_CHECK(err, err = solve_kernel.setArg(11, propagation_count_buffer));
-    OCL_CHECK(err, err = solve_kernel.setArg(12, imply_count_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(12, gate_imply_count_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(13, clause_imply_count_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(14, resolution_count_buffer));
 
     // Initialize Arrays
     for (GateID gid = 0; gid < graph.nodes.size(); gid++) {
@@ -147,13 +155,18 @@ void Solver::_solve() {
     g_occurrence_header[graph.occurrence_tables.size()] = occ;
 
     // Copy input data to device global memory
-    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({g_gates_buffer, g_initial_assigns_buffer, g_truth_tables_buffer, g_trail_buffer, is_sat_buffer, conflict_count_buffer, decision_count_buffer, propagation_count_buffer, imply_count_buffer}, 0));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({g_gates_buffer, g_initial_assigns_buffer, g_truth_tables_buffer, g_trail_buffer, is_sat_buffer, conflict_count_buffer, decision_count_buffer, propagation_count_buffer, gate_imply_count_buffer, clause_imply_count_buffer, resolution_count_buffer}, 0));
 
     // Launch the Kernel
-    OCL_CHECK(err, err = q.enqueueTask(solve_kernel));
+    cl::Event solve_event;
+    OCL_CHECK(err, err = q.enqueueTask(solve_kernel, nullptr, &solve_event));
+
+    solve_event.wait();
+    unsigned long long solve_event_time = solve_event.getProfilingInfo<CL_PROFILING_COMMAND_END>() - solve_event.getProfilingInfo<CL_PROFILING_COMMAND_START>();
+    cout << "solve_event_time = " << solve_event_time << " ns" << endl;
 
     // Copy Result from Device Global Memory to Host Local Memory
-    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({g_trail_buffer, is_sat_buffer, conflict_count_buffer, decision_count_buffer, propagation_count_buffer, imply_count_buffer}, CL_MIGRATE_MEM_OBJECT_HOST));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({g_trail_buffer, is_sat_buffer, conflict_count_buffer, decision_count_buffer, propagation_count_buffer, gate_imply_count_buffer, clause_imply_count_buffer, resolution_count_buffer}, CL_MIGRATE_MEM_OBJECT_HOST));
     q.finish();
 
     if (!is_sat) {
@@ -192,7 +205,9 @@ void Solver::printSummary() {
     cout << conflict_count << " conflicts occurred." << endl;
     cout << decision_count << " decisions occurred." << endl;
     cout << propagation_count << " propagations occurred." << endl;
-    cout << imply_count << " imply calls." << endl;
+    cout << gate_imply_count << " gate imply calls." << endl;
+    cout << clause_imply_count << " clause imply calls." << endl;
+    cout << resolution_count << " nodes resolved." << endl;
 }
 
 void Solver::logSummary(string log_file_path) {
@@ -204,7 +219,7 @@ void Solver::logSummary(string log_file_path) {
     // Write Header for new log files
     if (!fileExists(log_file_path)) {
         ofstream log(log_file_path);
-        log << "path,SAT?,duration(ms),nodes,total occurrences,primary inputs read,primary outputs read,conflicts occurred,decisions occurred,propagations occurred,imply calls" << endl;
+        log << "path,SAT?,duration(ms),nodes,total occurrences,primary inputs read,primary outputs read,conflicts occurred,decisions occurred,propagations occurred,gate imply calls,clause imply calls,nodes resolved" << endl;
         log.close();
     }
 
@@ -220,7 +235,9 @@ void Solver::logSummary(string log_file_path) {
     log << conflict_count << ",";
     log << decision_count << ",";
     log << propagation_count << ",";
-    log << imply_count << endl;
+    log << gate_imply_count << ",";
+    log << clause_imply_count << ",";
+    log << resolution_count << endl;
 }
 
 void Solver::writeTestbench() {
