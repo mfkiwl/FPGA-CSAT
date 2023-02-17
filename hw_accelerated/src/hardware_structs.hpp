@@ -151,7 +151,8 @@ struct Assignment {
 };
 
 struct ArrayQueue {
-    ArrayQueue(const uint32_t num_gates) {
+    ArrayQueue() {};
+    void initialize(const uint32_t num_gates) {
         head = 0;
         array[0].backward = gate_id::kNoConnect;
     initialize_ArrayQueue:

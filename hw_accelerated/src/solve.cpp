@@ -496,8 +496,9 @@ initialize_trail:
     int32_t trail_end = 0;
     int32_t q_head = 0;
 
-    static ArrayQueue VMTF_queue(num_gates);
+    static ArrayQueue VMTF_queue;
 #pragma HLS bind_storage variable = VMTF_queue.array type = RAM_T2P
+    VMTF_queue.initialize(num_gates);
     GateID VMTF_next_search = 0;
 
     uint32_t decision_level = 0;
