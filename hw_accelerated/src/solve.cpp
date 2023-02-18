@@ -185,9 +185,6 @@ propagate_loop:
         // Loop through related gates
     occurrence_loop:
         for (OccurrenceIndex i = occurrence_header[pa.gate_id]; i < occurrence_header[pa.gate_id + 1]; i++) {
-            if (occurrence_gids[i] == ante) {
-                continue;  // skip for performance
-            }
             gate_imply_count++;
             const GateID gid = occurrence_gids[i];
             const Gate g = gates[gid];
@@ -210,13 +207,14 @@ propagate_loop:
                 break;
             }
 
-        enqueue_new_implications:
+        enqueue_first_implication:
             for (Offset o = 0; o < PINS_PER_GATE; o++) {
                 if (pin_value::isAssigned(implied_pins(2 * o + 1, 2 * o)) && (initial_pins(2 * o + 1, 2 * o) != implied_pins(2 * o + 1, 2 * o))) {
                     // Enqueue
                     const Assignment enqueue_assignment = {g.edges[o], implied_pins(2 * o + 1, 2 * o)};
                     const NodeID enqueue_reason = (node_type::kGate, gid);
                     Enqueue(enqueue_assignment, enqueue_reason, assigns, antecedent, level_assigned, location, decision_level, trail, trail_end);
+                    break;
                 }
             }
         }
