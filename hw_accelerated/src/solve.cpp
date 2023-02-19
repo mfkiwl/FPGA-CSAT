@@ -424,14 +424,16 @@ ConflictAnalysis_loop:
 bool PickBranching(ArrayQueue& VMTF_queue, GateID& VMTF_next_search, uint32_t level_assigned[MAX_GATES], PinValue assigns[ASSIGN_CLONES][MAX_GATES], Assignment& branching_assignment) {
 #pragma HLS INLINE
     // Search for next unknown variable
+    GateID search_gate = VMTF_next_search;
 PickBranching_loop:
-    while (VMTF_next_search != gate_id::kNoConnect) {
-        if (level_assigned[VMTF_next_search] == UNASSIGNED) {
-            branching_assignment = Assignment(VMTF_next_search, pin_value::restorePhase(assigns[0][VMTF_next_search]));
-            VMTF_next_search = VMTF_queue.array[VMTF_next_search].forward;
+    while (search_gate != gate_id::kNoConnect) {
+#pragma HLS pipeline II = 2
+        VMTF_next_search = VMTF_queue.array[VMTF_next_search].forward;
+        if (level_assigned[search_gate] == UNASSIGNED) {
+            branching_assignment = Assignment(search_gate, pin_value::restorePhase(assigns[0][search_gate]));
             return true;
         }
-        VMTF_next_search = VMTF_queue.array[VMTF_next_search].forward;
+        search_gate = VMTF_next_search;
     }
     return false;
 }
