@@ -236,7 +236,6 @@ propagate_loop:
             const ap_uint<1> w_index = w[0];
             const ap_uint<1> other_index = ~w_index;
             Clause clause = clauses[clause_id];
-#pragma HLS array_partition variable = clause.literals complete
             const Watcher next_watcher = clause.next_watcher[w_index];
             const Literal other_watched_literal = clause.literals[other_index];
             Literal literal_to_watch = falsified_literal;  // By default, maintain watch on falsified_literal
@@ -349,10 +348,9 @@ ConflictAnalysis_loop:
         } else {
             // assert(node_to_resolve[NodeID::width - 1] == node_type::kClause);
             ClauseID cid = node_to_resolve(ClauseID::width - 1, 0);
-            const Clause clause = clauses[cid];
         resolve_clause_loop:
             for (uint32_t i = 0; i < MAX_LITERALS_PER_CLAUSE; i++) {
-                const Literal l = clause.literals[i];
+                const Literal l = clauses[cid].literals[i];
                 if (l == literal::kInvalid) {
                     break;
                 }
@@ -493,6 +491,7 @@ initialize_RAM_occurrences:
     }
 
     static Clause clauses[MAX_LEARNED_CLAUSES];
+#pragma HLS array_partition variable = (*clauses).literals complete
     static uint32_t trail_lim[MAX_GATES];
     static Assignment trail[MAX_GATES];
     int32_t clauses_end = 0;
