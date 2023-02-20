@@ -29,7 +29,7 @@ class Solver {
     alignas(4096) uint64_t clause_imply_count;
     alignas(4096) uint64_t resolution_count;
     unordered_map<string, bool> satisfying_assignment;
-    std::chrono::milliseconds duration;
+    std::chrono::duration<double> duration;
 
     void printSummary();
     void logSummary(string log_file_path);
@@ -51,7 +51,7 @@ void Solver::solve() {
     auto t0 = std::chrono::high_resolution_clock::now();
     _solve();
     auto t1 = std::chrono::high_resolution_clock::now();
-    duration = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0);
+    duration = std::chrono::duration_cast<std::chrono::duration<double>>(t1 - t0);
 }
 
 void Solver::_solve() {
@@ -197,7 +197,7 @@ void Solver::_solve() {
 void Solver::printSummary() {
     cout << eqn_file_path << endl;
     cout << "SAT? = " << is_sat << endl;
-    cout << duration.count() << "ms" << endl;
+    cout << std::fixed << std::setprecision(4) << duration.count() << "s" << endl;
     cout << graph.nodes.size() << " nodes." << endl;
     cout << graph.total_occurrences << " total occurrences." << endl;
     cout << graph.primary_inputs.size() << " primary inputs read." << endl;
@@ -219,7 +219,7 @@ void Solver::logSummary(string log_file_path) {
     // Write Header for new log files
     if (!fileExists(log_file_path)) {
         ofstream log(log_file_path);
-        log << "path,SAT?,duration(ms),nodes,total occurrences,primary inputs read,primary outputs read,conflicts occurred,decisions occurred,propagations occurred,gate imply calls,clause imply calls,nodes resolved" << endl;
+        log << "path,SAT?,duration(s),nodes,total occurrences,primary inputs read,primary outputs read,conflicts occurred,decisions occurred,propagations occurred,gate imply calls,clause imply calls,nodes resolved" << endl;
         log.close();
     }
 
@@ -227,7 +227,7 @@ void Solver::logSummary(string log_file_path) {
     ofstream log(log_file_path, ios_base::app);
     log << eqn_file_path << ",";
     log << is_sat << ",";
-    log << duration.count() << ",";
+    log << std::fixed << std::setprecision(4) << duration.count() << ",";
     log << graph.nodes.size() << ",";
     log << graph.total_occurrences << ",";
     log << graph.primary_inputs.size() << ",";
