@@ -379,6 +379,7 @@ ConflictAnalysis_loop:
         t--;  // t was at trail_end or the already resolved assignment
     trail_stamp_search:
         while (stamps[trail[t].gate_id] != conflict_id) {
+            // assert(antecedent[trail[t].gate_id] != node_id::kDecision);  // There is no way we should pop through a decision level during Resolution
             TrailPop(trail, trail_end, assigns, level_assigned);
             t--;
         }
@@ -394,7 +395,9 @@ ConflictAnalysis_loop:
     asserting_literal = (a.gate_id, pin_value::to_polarity(asserting_value));
     asserting_assignment = {a.gate_id, asserting_value};
 
-    if (keep_clause && lc_end > 1) {
+    if (keep_clause && lc_end == 1) {
+        learnt_node_id = node_id::kDecision;
+    } else if (keep_clause) {
         // assert(clauses_end < MAX_LEARNED_CLAUSES);
 
         ClauseID learnt_clause_id = clauses_end;
@@ -530,7 +533,6 @@ solve_loop:
             uint32_t backjump_level;
             Assignment asserting_assignment;
             NodeID learnt_node_id;
-            printTrail(trail, trail_end, level_assigned, antecedent);
             // uint32_t asserting_location = AssertingLocation(conflict, gates, clauses, assigns, location);
             // assert(asserting_location + 1 >= q_head);
             // CancelUntil(asserting_location + 1, trail, trail_end, assigns, level_assigned);
