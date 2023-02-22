@@ -216,6 +216,91 @@ class ArrayQueue {
     Entry links[MAX_GATES];
 };
 
+class ClauseAllocator {
+   public:
+    ClauseAllocator(){};
+
+    void initialize() {
+#pragma HLS INLINE
+        free_start = 0;
+        links[0].backward = head;
+        links[head].forward = 0;
+    initialize_ClauseAllocator:
+        for (unsigned int i = 0; i < MAX_LEARNED_CLAUSES; i++) {
+            links[i].forward = i + 1;
+            links[i + 1].backward = i;
+        }
+    };
+
+    bool isFull() {
+#pragma HLS INLINE
+        return (free_start == tail);
+    }
+
+    ClauseID allocate() {
+#pragma HLS INLINE
+        assert(free_start != tail);
+        ClauseID cid = free_start;
+        free_start = links[free_start].forward;
+        return cid;
+    }
+
+    void deallocate(ClauseID cid) {
+#pragma HLS INLINE
+        cout << "Deallocating " << cid.to_string(10) << endl;
+        detach(cid);
+        prepend(cid, free_start);
+        free_start = cid;
+    }
+
+    void detach(ClauseID cid) {
+#pragma HLS INLINE
+        assert(cid != head && cid != tail);
+        const ClauseID left = links[cid].backward;
+        const ClauseID right = links[cid].forward;
+        links[left].forward = right;
+        links[right].backward = left;
+    }
+
+    void prepend(ClauseID cid_to_prepend, ClauseID location) {
+#pragma HLS INLINE
+        assert(cid_to_prepend != head && cid_to_prepend != tail);
+        const ClauseID left = links[location].backward;
+        const ClauseID right = location;
+        links[left].forward = cid_to_prepend;
+        links[cid_to_prepend].backward = left;
+        links[cid_to_prepend].forward = right;
+        links[right].backward = cid_to_prepend;
+    }
+
+    void print() {
+        ClauseID node = head;
+        unsigned int count = 0;
+        for (unsigned int i = 0; i < MAX_LEARNED_CLAUSES + 2; i++) {
+            if ((++count % 8) == 0) {
+                cout << "\n";
+            }
+            if (node == free_start) {
+                cout << "(free_start) ";
+            }
+            cout << node.to_string(10) << " -> ";
+            assert(links[links[node].forward].backward == node);
+            node = links[node].forward;
+        }
+        cout << "\n";
+    }
+
+    struct Entry {
+        ClauseID forward;
+        ClauseID backward;
+    };
+
+    const ClauseID tail = ClauseID(MAX_LEARNED_CLAUSES);
+    const ClauseID head = ClauseID(MAX_LEARNED_CLAUSES);  // These can alias since head.backward and tail.forward are unused
+    ClauseID free_start;
+    Entry links[MAX_LEARNED_CLAUSES + 1];  // Embedding the head/tail entry in the list removes the need for special case boundary checking
+};
+
 struct Clause {
     Clause() {
     initialize_Clause:

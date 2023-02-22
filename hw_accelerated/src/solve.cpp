@@ -4,6 +4,7 @@
 #include "hardware_structs.hpp"
 #include "implication.hpp"
 #include "parameters.hpp"
+#include "test.hpp"
 
 void printWatchLists(Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_GATES], const uint32_t num_gates) {
     for (GateID gid = 0; gid < num_gates; gid++) {
@@ -56,7 +57,7 @@ void printClauses(const Clause clauses[MAX_LEARNED_CLAUSES], const int32_t claus
     }
 }
 
-void Enqueue(const Assignment& a, const NodeID& reason, PinValue assigns[ASSIGN_CLONES][MAX_GATES], NodeID antecedent[MAX_GATES], uint32_t level_assigned[MAX_GATES], uint32_t location[MAX_GATES], const uint32_t decision_level, Assignment trail[MAX_GATES], int32_t& trail_end) {
+void Enqueue(const Assignment& a, const NodeID& reason, PinValue assigns[ASSIGN_CLONES][MAX_GATES], NodeID antecedent[MAX_GATES], uint32_t level_assigned[MAX_GATES], uint32_t location[MAX_GATES], const uint32_t decision_level, bool locked[MAX_LEARNED_CLAUSES], Assignment trail[MAX_GATES], int32_t& trail_end) {
 #pragma HLS INLINE
     // cout << "Enqueue " << a.gate_id.to_string(10) << " = " << a.value.to_string(10) << " @ " << decision_level << endl;
     // assert(a.gate_id != gate_id::kNoConnect);
@@ -69,11 +70,17 @@ enqueue_clone_assigns:
     level_assigned[a.gate_id] = decision_level;
     antecedent[a.gate_id] = reason;
     location[a.gate_id] = trail_end;
+    if (reason[NodeID::width - 1] == node_type::kClause) {
+        const ClauseID cid = reason(ClauseID::width - 1, 0);
+        if (cid < MAX_LEARNED_CLAUSES) {
+            locked[cid] = true;
+        }
+    }
     trail[trail_end] = a;
     trail_end++;
 }
 
-void Cancel(const GateID gid, PinValue assigns[ASSIGN_CLONES][MAX_GATES], uint32_t level_assigned[MAX_GATES]) {
+void Cancel(const GateID gid, PinValue assigns[ASSIGN_CLONES][MAX_GATES], uint32_t level_assigned[MAX_GATES], const NodeID antecedent[MAX_GATES], bool locked[MAX_LEARNED_CLAUSES]) {
 #pragma HLS INLINE
     const PinValue saved_val = pin_value::savePhase(assigns[0][gid]);
 cancel_clone_assigns:
@@ -82,16 +89,24 @@ cancel_clone_assigns:
         assigns[ac][gid] = saved_val;
     }
     level_assigned[gid] = UNASSIGNED;
+
+    const NodeID reason = antecedent[gid];
+    if (reason[NodeID::width - 1] == node_type::kClause) {
+        const ClauseID cid = reason(ClauseID::width - 1, 0);
+        if (cid < MAX_LEARNED_CLAUSES) {
+            locked[cid] = false;
+        }
+    }
 }
 
-void CancelUntil(int32_t backtrack_step, const Assignment trail[MAX_GATES], int32_t& trail_end, PinValue assigns[ASSIGN_CLONES][MAX_GATES], uint32_t level_assigned[MAX_GATES]) {
+void CancelUntil(int32_t backtrack_step, const Assignment trail[MAX_GATES], int32_t& trail_end, PinValue assigns[ASSIGN_CLONES][MAX_GATES], uint32_t level_assigned[MAX_GATES], const NodeID antecedent[MAX_GATES], bool locked[MAX_LEARNED_CLAUSES]) {
 #pragma HLS INLINE
     // assert(backtrack_step <= trail_end);
     // assert(backtrack_step > 0);
 CancelUntil_loop:
     for (int32_t t = trail_end - 1; t >= backtrack_step; t--) {
         const GateID gid = trail[t].gate_id;
-        Cancel(gid, assigns, level_assigned);
+        Cancel(gid, assigns, level_assigned, antecedent, locked);
     }
     trail_end = backtrack_step;
 }
@@ -124,11 +139,11 @@ uint32_t AssertingLocation(const NodeID nid, const Gate gates[MAX_GATES], const 
     return asserting_location;
 }
 
-void TrailPop(const Assignment trail[MAX_GATES], int32_t& trail_end, PinValue assigns[ASSIGN_CLONES][MAX_GATES], uint32_t level_assigned[MAX_GATES]) {
+void TrailPop(const Assignment trail[MAX_GATES], int32_t& trail_end, PinValue assigns[ASSIGN_CLONES][MAX_GATES], uint32_t level_assigned[MAX_GATES], const NodeID antecedent[MAX_GATES], bool locked[MAX_GATES]) {
 #pragma HLS INLINE
     // assert(trail_end > 0);
     trail_end--;
-    Cancel(trail[trail_end].gate_id, assigns, level_assigned);
+    Cancel(trail[trail_end].gate_id, assigns, level_assigned, antecedent, locked);
 }
 
 void CollectGateAssigns(const PinValue assigns[ASSIGN_CLONES][MAX_GATES], const GateID edges[PINS_PER_GATE], Pins& pins) {
@@ -173,7 +188,7 @@ CollectClauseValuations_loop:
     }
 }
 
-void Propagate(const Gate gates[MAX_GATES], const TruthTable truth_tables[MAX_GATES], const OccurrenceIndex occurrence_header[MAX_GATES + 1], const GateID occurrence_gids[MAX_OCCURRENCES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_GATES], PinValue assigns[ASSIGN_CLONES][MAX_GATES], Assignment trail[MAX_GATES], int32_t& trail_end, int32_t& q_head, uint32_t level_assigned[MAX_GATES], NodeID antecedent[MAX_GATES], uint32_t location[MAX_GATES], const uint32_t decision_level, NodeID& conflict, uint64_t& propagation_count, uint64_t& gate_imply_count, uint64_t& clause_imply_count) {
+void Propagate(const Gate gates[MAX_GATES], const TruthTable truth_tables[MAX_GATES], const OccurrenceIndex occurrence_header[MAX_GATES + 1], const GateID occurrence_gids[MAX_OCCURRENCES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_GATES], bool locked[MAX_LEARNED_CLAUSES], PinValue assigns[ASSIGN_CLONES][MAX_GATES], Assignment trail[MAX_GATES], int32_t& trail_end, int32_t& q_head, uint32_t level_assigned[MAX_GATES], NodeID antecedent[MAX_GATES], uint32_t location[MAX_GATES], const uint32_t decision_level, NodeID& conflict, uint64_t& propagation_count, uint64_t& gate_imply_count, uint64_t& clause_imply_count) {
 #pragma HLS INLINE
     bool conflict_occurred = false;
 propagate_loop:
@@ -214,7 +229,7 @@ propagate_loop:
                     // Enqueue
                     const Assignment enqueue_assignment = {g.edges[o], implied_pins(2 * o + 1, 2 * o)};
                     const NodeID enqueue_reason = (node_type::kGate, gid);
-                    Enqueue(enqueue_assignment, enqueue_reason, assigns, antecedent, level_assigned, location, decision_level, trail, trail_end);
+                    Enqueue(enqueue_assignment, enqueue_reason, assigns, antecedent, level_assigned, location, decision_level, locked, trail, trail_end);
                     break;
                 }
             }
@@ -276,7 +291,7 @@ propagate_loop:
                 // cout << "Implication from clause " << clause_id.to_string(10) << ": ";
                 // clauses[clause_id].print();
                 // cout << "\n";
-                Enqueue(enqueue_assignment, enqueue_reason, assigns, antecedent, level_assigned, location, decision_level, trail, trail_end);
+                Enqueue(enqueue_assignment, enqueue_reason, assigns, antecedent, level_assigned, location, decision_level, locked, trail, trail_end);
             }
 
         Next_Watcher:
@@ -293,7 +308,7 @@ propagate_loop:
     }
 }
 
-bool ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_LEARNED_CLAUSES], int32_t& clauses_end, PinValue assigns[ASSIGN_CLONES][MAX_GATES], const Assignment trail[MAX_GATES], int32_t& trail_end, const uint32_t decision_level, const NodeID antecedent[MAX_GATES], uint32_t stamps[MAX_GATES], uint32_t level_assigned[MAX_GATES], ArrayQueue& VMTF_queue, uint32_t& backjump_level, Assignment& asserting_assignment, NodeID& learnt_node_id, uint64_t& resolution_count) {
+bool ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_LEARNED_CLAUSES], int32_t clause_activity[MAX_LEARNED_CLAUSES], ClauseAllocator& clause_allocator, PinValue assigns[ASSIGN_CLONES][MAX_GATES], bool locked[MAX_GATES], const Assignment trail[MAX_GATES], int32_t& trail_end, const uint32_t decision_level, const NodeID antecedent[MAX_GATES], uint32_t stamps[MAX_GATES], uint32_t level_assigned[MAX_GATES], ArrayQueue& VMTF_queue, uint32_t& backjump_level, Assignment& asserting_assignment, NodeID& learnt_node_id, uint64_t& resolution_count) {
 #pragma HLS INLINE
     static uint16_t conflict_id = 0;
 
@@ -349,6 +364,7 @@ ConflictAnalysis_loop:
         } else {
             // assert(node_to_resolve[NodeID::width - 1] == node_type::kClause);
             ClauseID cid = node_to_resolve(ClauseID::width - 1, 0);
+            clause_activity[cid]++;
         resolve_clause_loop:
             for (uint32_t i = 0; i < MAX_LITERALS_PER_CLAUSE; i++) {
                 const Literal l = clauses[cid].literals[i];
@@ -380,12 +396,12 @@ ConflictAnalysis_loop:
     trail_stamp_search:
         while (stamps[trail[t].gate_id] != conflict_id) {
             // assert(antecedent[trail[t].gate_id] != node_id::kDecision);  // There is no way we should pop through a decision level during Resolution
-            TrailPop(trail, trail_end, assigns, level_assigned);
+            TrailPop(trail, trail_end, assigns, level_assigned, antecedent, locked);
             t--;
         }
         a = trail[t];
         node_to_resolve = antecedent[a.gate_id];
-        TrailPop(trail, trail_end, assigns, level_assigned);
+        TrailPop(trail, trail_end, assigns, level_assigned, antecedent, locked);
         needs_resolution_count--;
     } while (needs_resolution_count > 0);
 
@@ -398,29 +414,75 @@ ConflictAnalysis_loop:
     if (keep_clause && lc_end == 1) {
         learnt_node_id = node_id::kDecision;
     } else if (keep_clause) {
-        // assert(clauses_end < MAX_LEARNED_CLAUSES);
+        // assert(!clause_allocator.isFull());
+        if (!clause_allocator.isFull()) {
+            ClauseID learnt_clause_id = clause_allocator.allocate();
+            learnt_node_id = (node_type::kClause, ap_uint<NODE_ID_BITS - 1>(learnt_clause_id));
+            learnt_clause.literals[0] = asserting_literal;
 
-        ClauseID learnt_clause_id = clauses_end;
-        learnt_node_id = (node_type::kClause, ap_uint<NODE_ID_BITS - 1>(learnt_clause_id));
-        learnt_clause.literals[0] = asserting_literal;
+            // Swap in the second watcher
+            Literal temp = learnt_clause.literals[1];
+            learnt_clause.literals[1] = learnt_clause.literals[swap_index];
+            learnt_clause.literals[swap_index] = temp;
 
-        // Swap in the second watcher
-        Literal temp = learnt_clause.literals[1];
-        learnt_clause.literals[1] = learnt_clause.literals[swap_index];
-        learnt_clause.literals[swap_index] = temp;
-
-        // Add the learnt_clause to the database
-        learnt_clause.next_watcher[0] = watcher_header[learnt_clause.literals[0]];
-        watcher_header[learnt_clause.literals[0]] = (learnt_clause_id, ap_uint<1>(0));
-        learnt_clause.next_watcher[1] = watcher_header[learnt_clause.literals[1]];
-        watcher_header[learnt_clause.literals[1]] = (learnt_clause_id, ap_uint<1>(1));
-        clauses[learnt_clause_id] = learnt_clause;
-        clauses_end++;
+            // Add the learnt_clause to the database
+            learnt_clause.next_watcher[0] = watcher_header[learnt_clause.literals[0]];
+            watcher_header[learnt_clause.literals[0]] = (learnt_clause_id, ap_uint<1>(0));
+            learnt_clause.next_watcher[1] = watcher_header[learnt_clause.literals[1]];
+            watcher_header[learnt_clause.literals[1]] = (learnt_clause_id, ap_uint<1>(1));
+            clauses[learnt_clause_id] = learnt_clause;
+            clause_activity[learnt_clause_id] = 0;
+        }
     } else {
         learnt_node_id = node_id::kForgot;
     }
     conflict_id++;
     return ret;
+}
+
+void ReduceClauses(const bool locked[MAX_LEARNED_CLAUSES], int32_t clause_activity[MAX_LEARNED_CLAUSES], ClauseAllocator& clause_allocator, Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_LEARNED_CLAUSES]) {
+#pragma HLS INLINE
+    bool remove[MAX_LEARNED_CLAUSES];
+reset_remove:
+    for (uint32_t i = 0; i < MAX_LEARNED_CLAUSES; i++) {
+        remove[i] = false;
+    }
+
+    // assert(clause_allocator.isFull());
+    ClauseID cid = clause_allocator.links[clause_allocator.head].forward;
+clause_deallocate_loop:
+    for (uint32_t i = 0; i < MAX_LEARNED_CLAUSES / 2; i++) {  // Remove inactive clauses in the oldest half
+        const ClauseID next_cid = clause_allocator.links[cid].forward;
+        if (!locked[cid] && clause_activity[cid] < CLAUSE_ACTIVITY_LIMIT) {
+            clause_allocator.deallocate(cid);
+            remove[cid] = true;
+        } else {
+            clause_activity[cid] = clause_activity[cid] / 2;  // Decay
+            remove[cid] = false;
+        }
+        cid = next_cid;
+    }
+
+watcher_list_cleanup:
+    for (uint32_t i = 0; i < 2 * MAX_GATES; i++) {
+        const Literal l = Literal(i);
+        Watcher w = watcher_header[l];
+    remove_header_watcher:
+        while (w != watcher::kInvalid && remove[w(Watcher::width - 1, 1)]) {
+            watcher_header[l] = clauses[w(Watcher::width - 1, 1)].next_watcher[w(0, 0)];
+            w = clauses[w(Watcher::width - 1, 1)].next_watcher[w(0, 0)];
+        }
+
+    remove_body_watcher:
+        while (w != watcher::kInvalid) {
+            Watcher next_w = clauses[w(Watcher::width - 1, 1)].next_watcher[w(0, 0)];
+            while (next_w != watcher::kInvalid && remove[next_w(Watcher::width - 1, 1)]) {
+                clauses[w(Watcher::width - 1, 1)].next_watcher[w(0, 0)] = clauses[next_w(Watcher::width - 1, 1)].next_watcher[next_w(0, 0)];
+                next_w = clauses[next_w(Watcher::width - 1, 1)].next_watcher[next_w(0, 0)];
+            }
+            w = next_w;
+        }
+    }
 }
 
 bool PickBranching(ArrayQueue& VMTF_queue, GateID& VMTF_next_search, uint32_t level_assigned[MAX_GATES], PinValue assigns[ASSIGN_CLONES][MAX_GATES], Assignment& branching_assignment) {
@@ -508,6 +570,11 @@ initialize_RAM_occurrences:
     VMTF_queue.initialize(num_gates);
     GateID VMTF_next_search = 0;
 
+    int32_t clause_activity[MAX_LEARNED_CLAUSES];
+    static bool locked[MAX_LEARNED_CLAUSES];
+    static ClauseAllocator clause_allocator;
+    clause_allocator.initialize();
+
     uint32_t conflict_count = (*g_conflict_count);
     uint32_t decision_count = (*g_decision_count);
     uint64_t propagation_count = (*g_propagation_count);
@@ -515,16 +582,19 @@ initialize_RAM_occurrences:
     uint64_t clause_imply_count = (*g_clause_imply_count);
     uint64_t resolution_count = (*g_resolution_count);
 
-    Enqueue(Assignment(GateID(gate_to_satisfy), pin_value::kOne), node_id::kDecision, assigns, antecedent, level_assigned, location, decision_level, trail, trail_end);
+    Enqueue(Assignment(GateID(gate_to_satisfy), pin_value::kOne), node_id::kDecision, assigns, antecedent, level_assigned, location, decision_level, locked, trail, trail_end);
 
     cout << "Hello! Starting solve kernel LOOP. num_gates = " << num_gates << ". gate_to_satisfy = " << gate_to_satisfy << endl;
 solve_loop:
     while (true) {
         NodeID conflict = node_id::kDecision;
-        Propagate(gates, truth_tables, occurrence_header, occurrence_gids, watcher_header, clauses, assigns, trail, trail_end, q_head, level_assigned, antecedent, location, decision_level, conflict, propagation_count, gate_imply_count, clause_imply_count);
+        Propagate(gates, truth_tables, occurrence_header, occurrence_gids, watcher_header, clauses, locked, assigns, trail, trail_end, q_head, level_assigned, antecedent, location, decision_level, conflict, propagation_count, gate_imply_count, clause_imply_count);
         if (conflict != node_id::kDecision) {
             conflict_count++;
             // cout << "Conflict occurred @ " << decision_level << endl;
+            if (clause_allocator.isFull()) {
+                ReduceClauses(locked, clause_activity, clause_allocator, watcher_header, clauses);
+            }
             if (decision_level == 0) {
                 cout << "Kernel: UNSAT" << endl;
                 StoreMetrics(false, g_is_sat, conflict_count, g_conflict_count, decision_count, g_decision_count, propagation_count, g_propagation_count, gate_imply_count, g_gate_imply_count, clause_imply_count, g_clause_imply_count, resolution_count, g_resolution_count);
@@ -535,8 +605,8 @@ solve_loop:
             NodeID learnt_node_id;
             // uint32_t asserting_location = AssertingLocation(conflict, gates, clauses, assigns, location);
             // assert(asserting_location + 1 >= q_head);
-            // CancelUntil(asserting_location + 1, trail, trail_end, assigns, level_assigned);
-            if (!ConflictAnalysis(conflict, gates, watcher_header, clauses, clauses_end, assigns, trail, trail_end, decision_level, antecedent, stamps, level_assigned, VMTF_queue, backjump_level, asserting_assignment, learnt_node_id, resolution_count)) {
+            // CancelUntil(asserting_location + 1, trail, trail_end, assigns, level_assigned, antecedent, locked);
+            if (!ConflictAnalysis(conflict, gates, watcher_header, clauses, clause_activity, clause_allocator, assigns, locked, trail, trail_end, decision_level, antecedent, stamps, level_assigned, VMTF_queue, backjump_level, asserting_assignment, learnt_node_id, resolution_count)) {
                 backjump_level = decision_level - 1;
                 Assignment a = trail[trail_lim[decision_level - 1]];
                 asserting_assignment = {a.gate_id, pin_value::inverse(a.value)};
@@ -546,13 +616,13 @@ solve_loop:
 
             int32_t backtrack_step = trail_lim[backjump_level];
             // assert(backtrack_step < MAX_GATES);
-            CancelUntil(backtrack_step, trail, trail_end, assigns, level_assigned);
+            CancelUntil(backtrack_step, trail, trail_end, assigns, level_assigned, antecedent, locked);
             q_head = trail_end;
             decision_level = backjump_level;
             // cout << "Backtrack to " << backjump_level << ". asserting assignment: ";
             // asserting_assignment.print();
             // cout << " @ " << decision_level << endl;
-            Enqueue(asserting_assignment, learnt_node_id, assigns, antecedent, level_assigned, location, decision_level, trail, trail_end);
+            Enqueue(asserting_assignment, learnt_node_id, assigns, antecedent, level_assigned, location, decision_level, locked, trail, trail_end);
         } else {
             trail_lim[decision_level] = trail_end;
             Assignment branching_assignment;
@@ -564,7 +634,7 @@ solve_loop:
             }
             decision_count++;
             decision_level++;
-            Enqueue(branching_assignment, node_id::kDecision, assigns, antecedent, level_assigned, location, decision_level, trail, trail_end);
+            Enqueue(branching_assignment, node_id::kDecision, assigns, antecedent, level_assigned, location, decision_level, locked, trail, trail_end);
         }
     }
 }
