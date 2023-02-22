@@ -426,7 +426,7 @@ bool PickBranching(ArrayQueue& VMTF_queue, GateID& VMTF_next_search, uint32_t le
 PickBranching_loop:
     while (search_gate != gate_id::kNoConnect) {
 #pragma HLS pipeline II = 2
-        VMTF_next_search = VMTF_queue.array[VMTF_next_search].forward;
+        VMTF_next_search = VMTF_queue.links[VMTF_next_search].forward;
         if (level_assigned[search_gate] == UNASSIGNED) {
             branching_assignment = Assignment(search_gate, pin_value::restorePhase(assigns[0][search_gate]));
             return true;
@@ -500,7 +500,7 @@ initialize_RAM_occurrences:
     int32_t q_head = 0;
 
     static ArrayQueue VMTF_queue;
-#pragma HLS bind_storage variable = VMTF_queue.array type = RAM_T2P
+#pragma HLS bind_storage variable = VMTF_queue.links type = RAM_T2P
     VMTF_queue.initialize(num_gates);
     GateID VMTF_next_search = 0;
 

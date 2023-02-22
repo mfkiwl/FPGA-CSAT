@@ -39,13 +39,13 @@ namespace literal {
 const Literal kInvalid = Literal(-1);
 bool isPositive(const Literal l) {
 #pragma HLS INLINE
-    return !l.test(0); // zero is positive (non-inverted) polarity
+    return !l.test(0);  // zero is positive (non-inverted) polarity
 }
 bool isNegative(const Literal l) {
 #pragma HLS INLINE
     return !isPositive(l);
 }
-}
+}  // namespace literal
 
 namespace gate_id {
 const GateID kNoConnect = GateID(sw::NO_CONNECT);
@@ -118,10 +118,9 @@ LiteralValuation evaluate(const Literal l, const PinValue val) {
     if (pin_value::isUnknown(val)) {
         return kUnknown;
     }
-    if((literal::isPositive(l) && val == pin_value::kOne) || (literal::isNegative(l) && val == pin_value::kZero)) {
+    if ((literal::isPositive(l) && val == pin_value::kOne) || (literal::isNegative(l) && val == pin_value::kZero)) {
         return kTrue;
-    }
-    else {
+    } else {
         return kFalse;
     }
 }
@@ -141,7 +140,7 @@ struct Gate {
 };
 
 struct Assignment {
-    Assignment() {};
+    Assignment(){};
     Assignment(GateID gate_id, PinValue value) : gate_id(gate_id), value(value){};
     GateID gate_id;
     PinValue value;
@@ -150,41 +149,40 @@ struct Assignment {
     }
 };
 
-struct ArrayQueue {
-    ArrayQueue() {};
+class ArrayQueue {
+   public:
+    ArrayQueue(){};
+
     void initialize(const uint32_t num_gates) {
         head = 0;
-        array[0].backward = gate_id::kNoConnect;
+        links[0].backward = gate_id::kNoConnect;
     initialize_ArrayQueue:
         for (unsigned int i = 0; i < num_gates - 1; i++) {
-            array[i].forward = i + 1;
-            array[i + 1].backward = i;
+            links[i].forward = i + 1;
+            links[i + 1].backward = i;
         }
-        array[num_gates - 1].forward = gate_id::kNoConnect;
-    };
+        links[num_gates - 1].forward = gate_id::kNoConnect;
+    }
+
     void bump(GateID g) {
         // assert(g != gate_id::kNoConnect);
         if (g != head) {
-            // Detatch
-            const GateID left = array[g].backward;
-            const GateID right = array[g].forward;
-            array[left].forward = right;
+            // Detach
+            const GateID left = links[g].backward;
+            const GateID right = links[g].forward;
+            links[left].forward = right;
             if (right != gate_id::kNoConnect) {
-                array[right].backward = left;
+                links[right].backward = left;
             }
 
             // Queue at head
-            array[head].backward = g;
-            array[g].forward = head;
-            array[g].backward = gate_id::kNoConnect;
+            links[head].backward = g;
+            links[g].forward = head;
+            links[g].backward = gate_id::kNoConnect;
             head = g;
         }
-    };
-    struct Entry {
-        // Entry() : forward(NO_CONNECT), backward(NO_CONNECT){};
-        GateID forward;
-        GateID backward;
-    };
+    }
+
     void print() {
         GateID node = head;
         int count = 0;
@@ -193,22 +191,29 @@ struct ArrayQueue {
             if ((++count % 8) == 0) {
                 cout << "\n";
             }
-            node = array[node].forward;
+            node = links[node].forward;
         }
         cout << "[X] count = " << count << endl;
     }
+
     uint32_t size() {
         GateID node = head;
         int count = 0;
         while (node != gate_id::kNoConnect) {
             count++;
-            node = array[node].forward;
+            node = links[node].forward;
         }
         return count;
     }
 
+    struct Entry {
+        // Entry() : forward(NO_CONNECT), backward(NO_CONNECT){};
+        GateID forward;
+        GateID backward;
+    };
+
     GateID head;
-    Entry array[MAX_GATES];
+    Entry links[MAX_GATES];
 };
 
 struct Clause {
@@ -232,6 +237,17 @@ struct Clause {
             }
         }
         cout << "} ";
+    }
+
+    uint32_t size() const {
+        uint32_t count = 0;
+        for (unsigned int i = 0; i < MAX_LITERALS_PER_CLAUSE; i++) {
+            const Literal l = literals[i];
+            if (l != literal::kInvalid) {
+                count++;
+            }
+        }
+        return count;
     }
 };
 
