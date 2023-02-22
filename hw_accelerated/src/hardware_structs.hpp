@@ -252,12 +252,17 @@ struct Clause {
 };
 
 ostream& operator<<(ostream& stream, const NodeID& nid) {
-    if (nid[NodeID::width - 1] == node_type::kGate) {
-        stream << "Gate-";
-    } else {
-        stream << "Clause-";
+    if(nid == node_id::kDecision) {
+        stream << "kDecision";
     }
-    stream << nid(NodeID::width - 2, 0).to_string(10);
+    else if (nid == node_id::kForgot) {
+        stream << "kForgot";
+    }
+    else if (nid[NodeID::width - 1] == node_type::kGate) {
+        stream << "Gate-" << nid(GateID::width - 1, 0).to_string(10);
+    } else {
+        stream << "Clause-" << nid(ClauseID::width - 1, 0).to_string(10);;
+    }
     return stream;
 }
 

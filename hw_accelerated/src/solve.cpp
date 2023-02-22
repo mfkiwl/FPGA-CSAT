@@ -30,7 +30,7 @@ void printWatchLists(Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_G
     }
 }
 
-void printTrailSection(const int32_t start, const int32_t end, const Assignment trail[MAX_GATES], uint32_t level_assigned[MAX_GATES]) {
+void printTrailSection(const int32_t start, const int32_t end, const Assignment trail[MAX_GATES], const uint32_t level_assigned[MAX_GATES], const NodeID antecedent[MAX_GATES]) {
     cout << "Printing Trail from " << start << " to " << end;
     for (int t = end - 1; t >= start; t--) {
         if (t == end - 1 || level_assigned[trail[t + 1].gate_id] != level_assigned[trail[t].gate_id]) {
@@ -38,13 +38,14 @@ void printTrailSection(const int32_t start, const int32_t end, const Assignment 
                  << "(d = " << level_assigned[trail[t].gate_id] << ") : ";
         }
         trail[t].print();
+        cout << " (" << antecedent[trail[t].gate_id] << ")";
         cout << ",  ";
     }
     cout << endl;
 }
 
-void printTrail(const Assignment trail[MAX_GATES], const int32_t trail_end, uint32_t level_assigned[MAX_GATES]) {
-    printTrailSection(0, trail_end, trail, level_assigned);
+void printTrail(const Assignment trail[MAX_GATES], const int32_t trail_end, const uint32_t level_assigned[MAX_GATES], const NodeID antecedent[MAX_GATES]) {
+    printTrailSection(0, trail_end, trail, level_assigned, antecedent);
 }
 
 void printClauses(const Clause clauses[MAX_LEARNED_CLAUSES], const int32_t clauses_end) {
@@ -529,6 +530,7 @@ solve_loop:
             uint32_t backjump_level;
             Assignment asserting_assignment;
             NodeID learnt_node_id;
+            printTrail(trail, trail_end, level_assigned, antecedent);
             // uint32_t asserting_location = AssertingLocation(conflict, gates, clauses, assigns, location);
             // assert(asserting_location + 1 >= q_head);
             // CancelUntil(asserting_location + 1, trail, trail_end, assigns, level_assigned);
@@ -554,9 +556,6 @@ solve_loop:
             Assignment branching_assignment;
             if (!PickBranching(VMTF_queue, VMTF_next_search, level_assigned, assigns, branching_assignment)) {
                 cout << "Kernel: SAT" << endl;
-                // printTrail(trail, trail_end, level_assigned);
-                // printWatchLists(watcher_header, clauses, num_gates);
-                // printClauses(clauses, clauses_end);
                 StoreTrail(trail, g_trail);
                 StoreMetrics(true, g_is_sat, conflict_count, g_conflict_count, decision_count, g_decision_count, propagation_count, g_propagation_count, gate_imply_count, g_gate_imply_count, clause_imply_count, g_clause_imply_count, resolution_count, g_resolution_count);
                 return;
