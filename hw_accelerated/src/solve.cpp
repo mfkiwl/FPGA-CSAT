@@ -203,7 +203,7 @@ propagate_loop:
 
             if (imply_conflict) {
                 // cout << "Imply conflict" << endl;
-                conflict = (node_type::kGate, gid);
+                conflict = (node_type::kGate, ap_uint<NODE_ID_BITS - 1>(gid));
                 conflict_occurred = true;
                 break;
             }
@@ -264,7 +264,7 @@ propagate_loop:
             // No swap found
             if (clause_valuations[other_index] == literal_valuation::kFalse) {
                 // Conflict
-                conflict = (node_type::kClause, clause_id);
+                conflict = (node_type::kClause, ap_uint<NODE_ID_BITS - 1>(clause_id));
                 conflict_occurred = true;
             } else {
                 // Enqueue
@@ -398,7 +398,7 @@ ConflictAnalysis_loop:
         // assert(clauses_end < MAX_LEARNED_CLAUSES);
 
         ClauseID learnt_clause_id = clauses_end;
-        learnt_node_id = (node_type::kClause, learnt_clause_id);
+        learnt_node_id = (node_type::kClause, ap_uint<NODE_ID_BITS - 1>(learnt_clause_id));
         learnt_clause.literals[0] = asserting_literal;
 
         // Swap in the second watcher

@@ -16,7 +16,7 @@ typedef ap_uint<1> Direction;
 typedef ap_uint<CLAUSE_ID_BITS> ClauseID;
 typedef ap_uint<CLAUSE_ID_BITS + 1> Watcher;
 typedef ap_uint<GATE_ID_BITS + 1> Literal;
-typedef ap_uint<max(GATE_ID_BITS, CLAUSE_ID_BITS) + 1> NodeID;
+typedef ap_uint<NODE_ID_BITS> NodeID;
 
 void printLiteral(const Literal& l);
 void printWatcher(const Watcher& w);
@@ -252,16 +252,14 @@ struct Clause {
 };
 
 ostream& operator<<(ostream& stream, const NodeID& nid) {
-    if(nid == node_id::kDecision) {
+    if (nid == node_id::kDecision) {
         stream << "kDecision";
-    }
-    else if (nid == node_id::kForgot) {
+    } else if (nid == node_id::kForgot) {
         stream << "kForgot";
-    }
-    else if (nid[NodeID::width - 1] == node_type::kGate) {
+    } else if (nid[NodeID::width - 1] == node_type::kGate) {
         stream << "Gate-" << nid(GateID::width - 1, 0).to_string(10);
     } else {
-        stream << "Clause-" << nid(ClauseID::width - 1, 0).to_string(10);;
+        stream << "Clause-" << nid(ClauseID::width - 1, 0).to_string(10);
     }
     return stream;
 }
