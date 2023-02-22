@@ -162,8 +162,9 @@ void Solver::_solve() {
     OCL_CHECK(err, err = q.enqueueTask(solve_kernel, nullptr, &solve_event));
 
     solve_event.wait();
-    unsigned long long solve_event_time = solve_event.getProfilingInfo<CL_PROFILING_COMMAND_END>() - solve_event.getProfilingInfo<CL_PROFILING_COMMAND_START>();
-    cout << "solve_event_time = " << solve_event_time << " ns" << endl;
+    unsigned long long solve_event_time_ns = solve_event.getProfilingInfo<CL_PROFILING_COMMAND_END>() - solve_event.getProfilingInfo<CL_PROFILING_COMMAND_START>();
+    double solve_event_time = double(solve_event_time_ns) / 1000000000.0;
+    cout << "solve_event_time = " << std::fixed << std::setprecision(4) << solve_event_time << " s" << endl;
 
     // Copy Result from Device Global Memory to Host Local Memory
     OCL_CHECK(err, err = q.enqueueMigrateMemObjects({g_trail_buffer, is_sat_buffer, conflict_count_buffer, decision_count_buffer, propagation_count_buffer, gate_imply_count_buffer, clause_imply_count_buffer, resolution_count_buffer}, CL_MIGRATE_MEM_OBJECT_HOST));
