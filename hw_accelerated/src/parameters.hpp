@@ -13,8 +13,9 @@ static constexpr unsigned int ceillog2(unsigned int x) {
 constexpr unsigned int TRUTH_TABLE_BITS = 1 << LUT_SIZE;
 constexpr unsigned int PINS_PER_GATE = LUT_SIZE + 1;
 constexpr unsigned int MAX_OCCURRENCES = MAX_GATES * PINS_PER_GATE;
+constexpr unsigned int RESERVED_GATE_IDS = 1;  // kNoConnect
 constexpr unsigned int RESERVED_NODE_IDS = 2;  // kDecision and kForgot
-constexpr unsigned int GATE_ID_BITS = ceillog2(MAX_GATES);
+constexpr unsigned int GATE_ID_BITS = ceillog2(MAX_GATES + RESERVED_GATE_IDS);
 constexpr unsigned int CLAUSE_ID_BITS = ceillog2(MAX_LEARNED_CLAUSES + RESERVED_NODE_IDS);
 constexpr unsigned int OFFSET_BITS = ceillog2(PINS_PER_GATE);
 constexpr unsigned int OCCURRENCE_BITS = ceillog2(MAX_OCCURRENCES + 1);  // +1 for the end occurrence index

@@ -1,3 +1,5 @@
+#pragma once
+
 #include "ap_int.h"
 #include "hardware_structs.hpp"
 #include "shared_parameters.hpp"
