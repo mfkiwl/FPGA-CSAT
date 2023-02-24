@@ -15,6 +15,8 @@ csat
 .ipcache
 .Xil
 tb_sim
+*.pyc
+multiplier_*
 
 .metadata
 .analytics
