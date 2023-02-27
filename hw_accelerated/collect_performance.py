@@ -1,6 +1,6 @@
 import subprocess
 import os
-lut_size = 10
+lut_size = 8
 test_suite = [15, 17]
 
 try:

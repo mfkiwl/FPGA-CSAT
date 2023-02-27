@@ -182,6 +182,10 @@ void parseEQN(string eqn_file_path, Graph& graph) {
         const string name = graph.gate_map[gate];
         const Signal signal = signals.at(name);
 
+        if(signal.inputs.size() > LUT_SIZE) {
+            throw logic_error("Tried to create a gate with more than LUT_SIZE inputs");
+        }
+
         graph.nodes[gate].is_PI = signal.is_PI;
 
         if (signal.is_PI) {
