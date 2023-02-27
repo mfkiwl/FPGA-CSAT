@@ -253,6 +253,7 @@ propagate_loop:
             const ap_uint<1> w_index = w[0];
             const ap_uint<1> other_index = ~w_index;
             Clause clause = clauses[clause_id];
+#pragma HLS array_partition variable = clause.literals complete
             const Watcher next_watcher = clause.next_watcher[w_index];
             const Literal other_watched_literal = clause.literals[other_index];
             Literal literal_to_watch = falsified_literal;  // By default, maintain watch on falsified_literal
@@ -475,6 +476,7 @@ watcher_list_cleanup:
     remove_body_watcher:
         while (w != watcher::kInvalid) {
             Watcher next_w = clauses[w(Watcher::width - 1, 1)].next_watcher[w(0, 0)];
+            remove_next_body_watcher:
             while (next_w != watcher::kInvalid && remove[next_w(Watcher::width - 1, 1)]) {
                 clauses[w(Watcher::width - 1, 1)].next_watcher[w(0, 0)] = clauses[next_w(Watcher::width - 1, 1)].next_watcher[next_w(0, 0)];
                 next_w = clauses[next_w(Watcher::width - 1, 1)].next_watcher[next_w(0, 0)];
