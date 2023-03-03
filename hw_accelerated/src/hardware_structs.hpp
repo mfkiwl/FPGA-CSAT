@@ -158,6 +158,7 @@ class ArrayQueue {
         links[0].backward = gate_id::kNoConnect;
     initialize_ArrayQueue:
         for (unsigned int i = 0; i < num_gates - 1; i++) {
+#pragma HLS loop_tripcount max = MAX_GATES
             links[i].forward = i + 1;
             links[i + 1].backward = i;
         }

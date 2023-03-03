@@ -99,12 +99,13 @@ cancel_clone_assigns:
     }
 }
 
-void CancelUntil(int32_t backtrack_step, const Assignment trail[MAX_GATES], int32_t& trail_end, PinValue assigns[ASSIGN_CLONES][MAX_GATES], uint32_t level_assigned[MAX_GATES], const NodeID antecedent[MAX_GATES], bool locked[MAX_LEARNED_CLAUSES]) {
+void CancelUntil(int32_t backtrack_step, const Assignment trail[MAX_GATES], int32_t& trail_end, PinValue assigns[ASSIGN_CLONES][MAX_GATES], uint32_t level_assigned[MAX_GATES], const NodeID antecedent[MAX_GATES], bool locked[MAX_LEARNED_CLAUSES], uint64_t& cancel_until_count) {
 #pragma HLS INLINE
     // assert(backtrack_step <= trail_end);
     // assert(backtrack_step > 0);
 CancelUntil_loop:
     for (int32_t t = trail_end - 1; t >= backtrack_step; t--) {
+        cancel_until_count++;
         const GateID gid = trail[t].gate_id;
         Cancel(gid, assigns, level_assigned, antecedent, locked);
     }
@@ -308,7 +309,7 @@ propagate_loop:
     }
 }
 
-bool ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_LEARNED_CLAUSES], int32_t clause_activity[MAX_LEARNED_CLAUSES], ClauseAllocator& clause_allocator, PinValue assigns[ASSIGN_CLONES][MAX_GATES], bool locked[MAX_GATES], const Assignment trail[MAX_GATES], int32_t& trail_end, const uint32_t decision_level, const NodeID antecedent[MAX_GATES], uint32_t stamps[MAX_GATES], uint32_t level_assigned[MAX_GATES], ArrayQueue& VMTF_queue, uint32_t& backjump_level, Assignment& asserting_assignment, NodeID& learnt_node_id, uint64_t& resolution_count) {
+bool ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_LEARNED_CLAUSES], int32_t clause_activity[MAX_LEARNED_CLAUSES], ClauseAllocator& clause_allocator, PinValue assigns[ASSIGN_CLONES][MAX_GATES], bool locked[MAX_GATES], const Assignment trail[MAX_GATES], int32_t& trail_end, const uint32_t decision_level, const NodeID antecedent[MAX_GATES], uint32_t stamps[MAX_GATES], uint32_t level_assigned[MAX_GATES], ArrayQueue& VMTF_queue, uint32_t& backjump_level, Assignment& asserting_assignment, NodeID& learnt_node_id, uint32_t& resolve_forgot_count, uint32_t& resolve_gate_count, uint32_t& resolve_clause_count, uint64_t& pop_unstamped_count) {
 #pragma HLS INLINE
     static uint16_t conflict_id = 0;
 
@@ -327,14 +328,15 @@ bool ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watch
     Assignment a;
 ConflictAnalysis_loop:
     do {
-        resolution_count++;
         // assert(node_to_resolve != node_id::kDecision);  // otherwise we would have found UIP
 
         // Resolve Node using stamping method: only "anchor" literals assigned at a lower decision level are stored in the learnt_clause
         if (node_to_resolve == node_id::kForgot) {
+            resolve_forgot_count++;
             keep_clause = false;
             ret = false;
         } else if (node_to_resolve[NodeID::width - 1] == node_type::kGate) {
+            resolve_gate_count++;
             const GateID gid = node_to_resolve(GateID::width - 1, 0);
             const Gate g = gates[gid];
         resolve_gate_loop:
@@ -363,6 +365,7 @@ ConflictAnalysis_loop:
             }
         } else {
             // assert(node_to_resolve[NodeID::width - 1] == node_type::kClause);
+            resolve_clause_count++;
             ClauseID cid = node_to_resolve(ClauseID::width - 1, 0);
             clause_activity[cid]++;
         resolve_clause_loop:
@@ -396,6 +399,7 @@ ConflictAnalysis_loop:
     trail_stamp_search:
         while (stamps[trail[t].gate_id] != conflict_id) {
             // assert(antecedent[trail[t].gate_id] != node_id::kDecision);  // There is no way we should pop through a decision level during Resolution
+            pop_unstamped_count++;
             TrailPop(trail, trail_end, assigns, level_assigned, antecedent, locked);
             t--;
         }
@@ -476,7 +480,7 @@ watcher_list_cleanup:
     remove_body_watcher:
         while (w != watcher::kInvalid) {
             Watcher next_w = clauses[w(Watcher::width - 1, 1)].next_watcher[w(0, 0)];
-            remove_next_body_watcher:
+        remove_next_body_watcher:
             while (next_w != watcher::kInvalid && remove[next_w(Watcher::width - 1, 1)]) {
                 clauses[w(Watcher::width - 1, 1)].next_watcher[w(0, 0)] = clauses[next_w(Watcher::width - 1, 1)].next_watcher[next_w(0, 0)];
                 next_w = clauses[next_w(Watcher::width - 1, 1)].next_watcher[next_w(0, 0)];
@@ -486,13 +490,14 @@ watcher_list_cleanup:
     }
 }
 
-bool PickBranching(ArrayQueue& VMTF_queue, GateID& VMTF_next_search, uint32_t level_assigned[MAX_GATES], PinValue assigns[ASSIGN_CLONES][MAX_GATES], Assignment& branching_assignment) {
+bool PickBranching(ArrayQueue& VMTF_queue, GateID& VMTF_next_search, uint32_t level_assigned[MAX_GATES], PinValue assigns[ASSIGN_CLONES][MAX_GATES], Assignment& branching_assignment, uint64_t& pick_branching_count) {
 #pragma HLS INLINE
     // Search for next unknown variable
     GateID search_gate = VMTF_next_search;
 PickBranching_loop:
     while (search_gate != gate_id::kNoConnect) {
 #pragma HLS pipeline II = 2
+        pick_branching_count++;
         VMTF_next_search = VMTF_queue.links[VMTF_next_search].forward;
         if (level_assigned[search_gate] == UNASSIGNED) {
             branching_assignment = Assignment(search_gate, pin_value::restorePhase(assigns[0][search_gate]));
@@ -511,14 +516,19 @@ StoreTrail_loop:
     }
 }
 
-void StoreMetrics(const bool is_sat, bool* g_is_sat, const uint32_t conflict_count, uint32_t* g_conflict_count, const uint32_t decision_count, uint32_t* g_decision_count, const uint64_t propagation_count, uint64_t* g_propagation_count, const uint64_t gate_imply_count, uint64_t* g_gate_imply_count, const uint64_t clause_imply_count, uint64_t* g_clause_imply_count, const uint64_t resolution_count, uint64_t* g_resolution_count, const uint32_t reduce_clauses_count, uint32_t* g_reduce_clauses_count, const uint64_t gate_implication_count, uint64_t* g_gate_implication_count, const uint64_t clause_implication_count, uint64_t* g_clause_implication_count) {
+void StoreMetrics(const bool is_sat, bool* g_is_sat, const uint32_t conflict_count, uint32_t* g_conflict_count, const uint32_t decision_count, uint32_t* g_decision_count, const uint64_t propagation_count, uint64_t* g_propagation_count, const uint64_t gate_imply_count, uint64_t* g_gate_imply_count, const uint64_t clause_imply_count, uint64_t* g_clause_imply_count, uint32_t const resolve_gate_count, uint32_t* const g_resolve_gate_count, uint32_t const resolve_forgot_count, uint32_t* const g_resolve_forgot_count, uint32_t const resolve_clause_count, uint32_t* const g_resolve_clause_count, uint64_t const pop_unstamped_count, uint64_t* const g_pop_unstamped_count, uint64_t const pick_branching_count, uint64_t* const g_pick_branching_count, uint64_t const cancel_until_count, uint64_t* const g_cancel_until_count, const uint32_t reduce_clauses_count, uint32_t* g_reduce_clauses_count, const uint64_t gate_implication_count, uint64_t* g_gate_implication_count, const uint64_t clause_implication_count, uint64_t* g_clause_implication_count) {
     (*g_is_sat) = is_sat;
     (*g_conflict_count) = conflict_count;
     (*g_decision_count) = decision_count;
     (*g_propagation_count) = propagation_count;
     (*g_gate_imply_count) = gate_imply_count;
     (*g_clause_imply_count) = clause_imply_count;
-    (*g_resolution_count) = resolution_count;
+    (*g_resolve_gate_count) = resolve_gate_count;
+    (*g_resolve_forgot_count) = resolve_forgot_count;
+    (*g_resolve_clause_count) = resolve_clause_count;
+    (*g_pop_unstamped_count) = pop_unstamped_count;
+    (*g_pick_branching_count) = pick_branching_count;
+    (*g_cancel_until_count) = cancel_until_count;
     (*g_reduce_clauses_count) = reduce_clauses_count;
     (*g_gate_implication_count) = gate_implication_count;
     (*g_clause_implication_count) = clause_implication_count;
@@ -526,7 +536,7 @@ void StoreMetrics(const bool is_sat, bool* g_is_sat, const uint32_t conflict_cou
 
 extern "C" {
 
-void solve(const Gate g_gates[MAX_GATES], const PinValue g_initial_assigns[MAX_GATES], const TruthTable g_truth_tables[MAX_GATES], const OccurrenceIndex g_occurrence_header[MAX_GATES + 1], const GateID g_occurrence_gids[MAX_OCCURRENCES], const uint32_t num_gates, const uint32_t gate_to_satisfy, Assignment g_trail[MAX_GATES], bool* g_is_sat, uint32_t* const g_conflict_count, uint32_t* const g_decision_count, uint64_t* const g_propagation_count, uint64_t* const g_gate_imply_count, uint64_t* const g_clause_imply_count, uint64_t* const g_resolution_count, uint32_t* const g_reduce_clauses_count, uint64_t* const g_gate_implication_count, uint64_t* const g_clause_implication_count) {
+void solve(const Gate g_gates[MAX_GATES], const PinValue g_initial_assigns[MAX_GATES], const TruthTable g_truth_tables[MAX_GATES], const OccurrenceIndex g_occurrence_header[MAX_GATES + 1], const GateID g_occurrence_gids[MAX_OCCURRENCES], const uint32_t num_gates, const uint32_t gate_to_satisfy, Assignment g_trail[MAX_GATES], bool* g_is_sat, uint32_t* const g_conflict_count, uint32_t* const g_decision_count, uint64_t* const g_propagation_count, uint64_t* const g_gate_imply_count, uint64_t* const g_clause_imply_count, uint32_t* const g_resolve_gate_count, uint32_t* const g_resolve_forgot_count, uint32_t* const g_resolve_clause_count, uint64_t* const g_pop_unstamped_count, uint64_t* const g_pick_branching_count, uint64_t* const g_cancel_until_count, uint32_t* const g_reduce_clauses_count, uint64_t* const g_gate_implication_count, uint64_t* const g_clause_implication_count) {
     static PinValue assigns[ASSIGN_CLONES][MAX_GATES];
 #pragma HLS array_partition variable = assigns dim = 1 complete
     static uint32_t level_assigned[MAX_GATES];
@@ -584,10 +594,16 @@ initialize_RAM_occurrences:
     uint64_t propagation_count = (*g_propagation_count);
     uint64_t gate_imply_count = (*g_gate_imply_count);
     uint64_t clause_imply_count = (*g_clause_imply_count);
-    uint64_t resolution_count = (*g_resolution_count);
+    uint32_t resolve_gate_count = (*g_resolve_gate_count);
+    uint32_t resolve_forgot_count = (*g_resolve_forgot_count);
+    uint32_t resolve_clause_count = (*g_resolve_clause_count);
+    uint64_t pop_unstamped_count = (*g_pop_unstamped_count);
+    uint64_t pick_branching_count = (*g_pick_branching_count);
+    uint64_t cancel_until_count = (*g_cancel_until_count);
     uint32_t reduce_clauses_count = (*g_reduce_clauses_count);
     uint64_t gate_implication_count = (*g_gate_implication_count);
     uint64_t clause_implication_count = (*g_clause_implication_count);
+    bool is_sat = false;
 
     Enqueue(Assignment(GateID(gate_to_satisfy), pin_value::kOne), node_id::kDecision, assigns, antecedent, level_assigned, location, decision_level, locked, trail, trail_end);
 
@@ -605,16 +621,16 @@ solve_loop:
             }
             if (decision_level == 0) {
                 cout << "Kernel: UNSAT" << endl;
-                StoreMetrics(false, g_is_sat, conflict_count, g_conflict_count, decision_count, g_decision_count, propagation_count, g_propagation_count, gate_imply_count, g_gate_imply_count, clause_imply_count, g_clause_imply_count, resolution_count, g_resolution_count, reduce_clauses_count, g_reduce_clauses_count, gate_implication_count, g_gate_implication_count, clause_implication_count, g_clause_implication_count);
-                return;
+                is_sat = false;
+                break;
             }
             uint32_t backjump_level;
             Assignment asserting_assignment;
             NodeID learnt_node_id;
             // uint32_t asserting_location = AssertingLocation(conflict, gates, clauses, assigns, location);
             // assert(asserting_location + 1 >= q_head);
-            // CancelUntil(asserting_location + 1, trail, trail_end, assigns, level_assigned, antecedent, locked);
-            if (!ConflictAnalysis(conflict, gates, watcher_header, clauses, clause_activity, clause_allocator, assigns, locked, trail, trail_end, decision_level, antecedent, stamps, level_assigned, VMTF_queue, backjump_level, asserting_assignment, learnt_node_id, resolution_count)) {
+            // CancelUntil(asserting_location + 1, trail, trail_end, assigns, level_assigned, antecedent, locked, cancel_until_count);
+            if (!ConflictAnalysis(conflict, gates, watcher_header, clauses, clause_activity, clause_allocator, assigns, locked, trail, trail_end, decision_level, antecedent, stamps, level_assigned, VMTF_queue, backjump_level, asserting_assignment, learnt_node_id, resolve_forgot_count, resolve_gate_count, resolve_clause_count, pop_unstamped_count)) {
                 backjump_level = decision_level - 1;
                 Assignment a = trail[trail_lim[decision_level - 1]];
                 asserting_assignment = {a.gate_id, pin_value::inverse(a.value)};
@@ -624,7 +640,7 @@ solve_loop:
 
             int32_t backtrack_step = trail_lim[backjump_level];
             // assert(backtrack_step < MAX_GATES);
-            CancelUntil(backtrack_step, trail, trail_end, assigns, level_assigned, antecedent, locked);
+            CancelUntil(backtrack_step, trail, trail_end, assigns, level_assigned, antecedent, locked, cancel_until_count);
             q_head = trail_end;
             decision_level = backjump_level;
             // cout << "Backtrack to " << backjump_level << ". asserting assignment: ";
@@ -634,16 +650,19 @@ solve_loop:
         } else {
             trail_lim[decision_level] = trail_end;
             Assignment branching_assignment;
-            if (!PickBranching(VMTF_queue, VMTF_next_search, level_assigned, assigns, branching_assignment)) {
+            if (!PickBranching(VMTF_queue, VMTF_next_search, level_assigned, assigns, branching_assignment, pick_branching_count)) {
                 cout << "Kernel: SAT" << endl;
-                StoreTrail(trail, g_trail);
-                StoreMetrics(true, g_is_sat, conflict_count, g_conflict_count, decision_count, g_decision_count, propagation_count, g_propagation_count, gate_imply_count, g_gate_imply_count, clause_imply_count, g_clause_imply_count, resolution_count, g_resolution_count, reduce_clauses_count, g_reduce_clauses_count, gate_implication_count, g_gate_implication_count, clause_implication_count, g_clause_implication_count);
-                return;
+                is_sat = true;
+                break;
             }
             decision_count++;
             decision_level++;
             Enqueue(branching_assignment, node_id::kDecision, assigns, antecedent, level_assigned, location, decision_level, locked, trail, trail_end);
         }
     }
+    if (is_sat) {
+        StoreTrail(trail, g_trail);
+    }
+    StoreMetrics(is_sat, g_is_sat, conflict_count, g_conflict_count, decision_count, g_decision_count, propagation_count, g_propagation_count, gate_imply_count, g_gate_imply_count, clause_imply_count, g_clause_imply_count, resolve_gate_count, g_resolve_gate_count, resolve_forgot_count, g_resolve_forgot_count, resolve_clause_count, g_resolve_clause_count, pop_unstamped_count, g_pop_unstamped_count, pick_branching_count, g_pick_branching_count, cancel_until_count, g_cancel_until_count, reduce_clauses_count, g_reduce_clauses_count, gate_implication_count, g_gate_implication_count, clause_implication_count, g_clause_implication_count);
 }
 }
