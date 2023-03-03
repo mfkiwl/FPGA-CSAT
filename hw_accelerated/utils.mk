@@ -1,19 +1,3 @@
-#+-------------------------------------------------------------------------------
-# The following parameters are assigned with default values. These parameters can
-# be overridden through the make command line
-#+-------------------------------------------------------------------------------
-
-DEBUG := no
-
-#Generates debug summary report
-ifeq ($(DEBUG), yes)
-VPP_LDFLAGS += --dk list_ports
-endif
-
-ifneq ($(TARGET), hw)
-VPP_FLAGS += -g
-endif
-
 #Checks for XILINX_VITIS
 check-vitis:
 ifndef XILINX_VITIS
@@ -45,4 +29,3 @@ RM = rm -f
 RMDIR = rm -rf
 
 ECHO:= @echo
-

@@ -6,4 +6,4 @@ constexpr unsigned int MAX_GATES = 4096;
 
 constexpr unsigned int MAX_LEARNED_CLAUSES = MAX_GATES;
 constexpr unsigned int MAX_LITERALS_PER_CLAUSE = 24;
-constexpr unsigned int CLAUSE_ACTIVITY_LIMIT = 1;
+constexpr unsigned int CLAUSE_ACTIVITY_LIMIT = 4;

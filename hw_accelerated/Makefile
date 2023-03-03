@@ -12,32 +12,40 @@ EXECUTABLE = ./csat
 KERNEL = solve
 
 KERNEL_BIN = $(BUILD_DIR)/$(KERNEL).xclbin
-CXXFLAGS += -I$(XILINX_XRT)/include -I$(XILINX_VIVADO)/include -I$(PROJ_ROOT)/includes/xcl2 -Wall -O0 -g -std=c++17
-LDFLAGS += -L$(XILINX_XRT)/lib -pthread -lOpenCL
+EMCONFIG_DIR = $(TEMP_DIR)
 
 LINK_OUTPUT := $(BUILD_DIR)/$(KERNEL).link.xclbin
 PACKAGE_OUT = ./package.$(TARGET)
 
-COMMONFLAGS = -I$(PROJ_ROOT)/../shared/src  -Wunused-variable
+############################## Setting up Flags ##############################
+CXX_FLAGS += -I$(XILINX_XRT)/include -I$(XILINX_VIVADO)/include -I$(PROJ_ROOT)/includes/xcl2 -Wall -std=c++17 -fmessage-length=0
+CXX_DEBUG_FLAGS += -O0 -g
+CXX_PRODUCTION_FLAGS += -O3
+LDFLAGS += -L$(XILINX_XRT)/lib -pthread -lOpenCL -lrt -lstdc++ 
 
+VPP_FLAGS += -t $(TARGET) --platform $(PLATFORM) --save-temps --hls.pre_tcl $(PROJ_ROOT)/config/hls_config.tcl
+VPP_DEBUG_FLAGS = -g --profile.data all:all:all
+VPP_PRODUCTION_FLAGS = -O3
+
+COMMONFLAGS = -I$(PROJ_ROOT)/../shared/src  -Wunused-variable
+CXX_FLAGS += $(COMMONFLAGS)
+VPP_FLAGS += $(COMMONFLAGS)
+
+DEBUG := no
+ifeq ($(DEBUG), yes)
+	CXX_FLAGS += $(CXX_DEBUG_FLAGS)
+	VPP_FLAGS += $(VPP_DEBUG_FLAGS)
+#VPP_LDFLAGS += --debug.list_ports
+else
+	CXX_FLAGS += $(CXX_PRODUCTION_FLAGS)
+	VPP_FLAGS += $(VPP_PRODUCTION_FLAGS)
+endif
+
+############################## Setting up Files ##############################
+HOST_SRCS += $(PROJ_ROOT)/includes/xcl2/xcl2.cpp ./src/host.cpp 
 HW_HEADERS := $(wildcard src/*.hpp)
 SHARED_HEADERS := $(wildcard ../shared/src/*.hpp)
 HEADERS := $(HW_HEADERS) $(SHARED_HEADERS)
-
-############################## Setting up Host Variables ##############################
-#Include Required Host Source Files
-CXXFLAGS += $(COMMONFLAGS)
-HOST_SRCS += $(PROJ_ROOT)/includes/xcl2/xcl2.cpp ./src/host.cpp 
-
-# Host compiler global settings
-CXXFLAGS += -fmessage-length=0
-LDFLAGS += -lrt -lstdc++ 
-
-############################## Setting up Kernel Variables ##############################
-# Kernel compiler global settings
-VPP_FLAGS += -t $(TARGET) --platform $(PLATFORM) --save-temps --hls.pre_tcl $(PROJ_ROOT)/config/hls_config.tcl $(COMMONFLAGS) --profile.data all:all:all
-
-EMCONFIG_DIR = $(TEMP_DIR)
 
 ############################## Setting Targets ##############################
 .PHONY: all clean cleanall docs emconfig
@@ -46,16 +54,10 @@ all: check-platform check-vitis $(EXECUTABLE) $(BUILD_DIR)/$(KERNEL).xclbin emco
 .PHONY: host
 host: $(EXECUTABLE)
 
-.PHONY: build
-build: check-vitis $(BUILD_DIR)/$(KERNEL).xclbin
-
-.PHONY: xclbin
-xclbin: build
-
 ############################## Setting Rules for Binary Containers (Building Kernels) ##############################
 $(TEMP_DIR)/$(KERNEL).xo: src/$(KERNEL).cpp $(HEADERS)
 	mkdir -p $(TEMP_DIR)
-	v++ $(VPP_FLAGS) -c -k $(KERNEL) --temp_dir $(TEMP_DIR)  -I'$(<D)' -o'$@' '$<'
+	v++ $(VPP_FLAGS) -c -k $(KERNEL) --temp_dir $(TEMP_DIR) -I'$(<D)' -o'$@' '$<'
 
 $(BUILD_DIR)/$(KERNEL).xclbin: $(TEMP_DIR)/$(KERNEL).xo
 	mkdir -p $(BUILD_DIR)
@@ -64,7 +66,7 @@ $(BUILD_DIR)/$(KERNEL).xclbin: $(TEMP_DIR)/$(KERNEL).xo
 
 ############################## Setting Rules for Host (Building Host Executable) ##############################
 $(EXECUTABLE): $(HOST_SRCS) $(HEADERS) | check-xrt
-	g++ -o $@ $(HOST_SRCS) $(CXXFLAGS) $(LDFLAGS)
+	g++ -o $@ $(HOST_SRCS) $(CXX_FLAGS) $(LDFLAGS)
 
 emconfig:$(EMCONFIG_DIR)/emconfig.json
 $(EMCONFIG_DIR)/emconfig.json:
@@ -104,7 +106,7 @@ cleanall: clean
 help:
 	$(ECHO) "Makefile Usage:"
 	$(ECHO) "  make all TARGET=<sw_emu/hw_emu/hw>"
-	$(ECHO) "      Command to generate the design for specified Target."
+	$(ECHO) "      Command to generate the design for specified target."
 	$(ECHO) ""
 	$(ECHO) "  make clean "
 	$(ECHO) "      Command to remove the generated non-hardware files."
@@ -116,10 +118,7 @@ help:
 	$(ECHO) "      Command to run the application. This is same as 'run' target but does not have any makefile dependency."
 	$(ECHO) ""
 	$(ECHO) "  make run TARGET=<sw_emu/hw_emu/hw(default)> CIRCUIT=<.eqn file path> SAT=<output to satisfy>"
-	$(ECHO) "      Command to run application in emulation."
-	$(ECHO) ""
-	$(ECHO) "  make build TARGET=<sw_emu/hw_emu/hw>"
-	$(ECHO) "      Command to build xclbin application."
+	$(ECHO) "      Command to build the host and kernel and test it."
 	$(ECHO) ""
 	$(ECHO) "  make host"
 	$(ECHO) "      Command to build host application."
