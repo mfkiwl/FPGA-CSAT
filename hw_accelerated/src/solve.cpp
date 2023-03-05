@@ -341,6 +341,7 @@ ConflictAnalysis_loop:
             const Gate g = gates[gid];
         resolve_gate_loop:
             for (Offset o = 0; o < PINS_PER_GATE; o++) {
+                #pragma HLS DEPENDENCE variable=stamps inter false
                 GateID edge = g.edges[o];
                 if (edge != gate_id::kNoConnect && pin_value::isAssigned(assigns[0][edge]) && stamps[edge] != conflict_id && level_assigned[edge] != 0) {
                     Literal l;
@@ -370,6 +371,7 @@ ConflictAnalysis_loop:
             clause_activity[cid]++;
         resolve_clause_loop:
             for (uint32_t i = 0; i < MAX_LITERALS_PER_CLAUSE; i++) {
+                #pragma HLS DEPENDENCE variable=stamps inter false
                 const Literal l = clauses[cid].literals[i];
                 if (l == literal::kInvalid) {
                     break;
