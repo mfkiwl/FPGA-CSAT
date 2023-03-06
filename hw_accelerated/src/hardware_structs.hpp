@@ -18,7 +18,6 @@ typedef ap_uint<CLAUSE_ID_BITS + 1> Watcher;
 typedef ap_uint<GATE_ID_BITS + 1> Literal;
 typedef ap_uint<NODE_ID_BITS> NodeID;
 
-void printLiteral(const Literal& l);
 void printWatcher(const Watcher& w);
 
 namespace node_type {
@@ -44,6 +43,15 @@ bool isPositive(const Literal l) {
 bool isNegative(const Literal l) {
 #pragma HLS INLINE
     return !isPositive(l);
+}
+
+string to_string(const Literal l) {
+    string s;
+    if (l.test(0)) {
+        s += "~";
+    }
+    s += l(Literal::width - 1, 1).to_string(10);
+    return s;
 }
 }  // namespace literal
 
@@ -105,6 +113,16 @@ ap_uint<1> to_polarity(const PinValue& pv) {
         return ap_uint<1>(0);  // positive (non-inverted) polarity
     }
 }
+
+string to_string(const PinValue& pv) {
+    if (pv == kZero) {
+        return "0";
+    } else if (pv == kOne) {
+        return "1";
+    } else {
+        return "U";
+    }
+}
 }  // namespace pin_value
 
 namespace literal_valuation {
@@ -122,6 +140,16 @@ LiteralValuation evaluate(const Literal l, const PinValue val) {
         return kTrue;
     } else {
         return kFalse;
+    }
+}
+
+string to_string(const LiteralValuation lv) {
+    if (lv == kFalse) {
+        return "F";
+    } else if (lv == kTrue) {
+        return "T";
+    } else {
+        return "U";
     }
 }
 }  // namespace literal_valuation
@@ -144,8 +172,8 @@ struct Assignment {
     Assignment(GateID gate_id, PinValue value) : gate_id(gate_id), value(value){};
     GateID gate_id;
     PinValue value;
-    void print() const {
-        cout << gate_id.to_string(10) << " = " << value;
+    string to_string() const {
+        return string() + gate_id.to_string(10) + " = " + pin_value::to_string(value);
     }
 };
 
@@ -319,7 +347,7 @@ struct Clause {
         for (unsigned int i = 0; i < MAX_LITERALS_PER_CLAUSE; i++) {
             const Literal l = literals[i];
             if (l != literal::kInvalid) {
-                printLiteral(l);
+                cout << literal::to_string(l) << " ";
             }
         }
         cout << "} ";
@@ -348,13 +376,6 @@ ostream& operator<<(ostream& stream, const NodeID& nid) {
         stream << "Clause-" << nid(ClauseID::width - 1, 0).to_string(10);
     }
     return stream;
-}
-
-void printLiteral(const Literal& l) {
-    if (l.test(0)) {
-        cout << "~";
-    }
-    cout << l(Literal::width - 1, 1).to_string(10) << " ";
 }
 
 void printWatcher(const Watcher& w) {

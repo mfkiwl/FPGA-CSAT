@@ -6,56 +6,13 @@
 #include "parameters.hpp"
 #include "test.hpp"
 
-void printWatchLists(Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_GATES], const uint32_t num_gates) {
-    for (GateID gid = 0; gid < num_gates; gid++) {
-        for (ap_uint<1> polarity = 0;; polarity = ap_uint<1>(1)) {
-            Literal l;
-            l = (gid, polarity);
-            printLiteral(l);
+void printWatchLists(Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_GATES], const uint32_t num_gates);
+void printTrailSection(const int32_t start, const int32_t end, const Assignment trail[MAX_GATES], const uint32_t level_assigned[MAX_GATES], const NodeID antecedent[MAX_GATES]);
+void printTrail(const Assignment trail[MAX_GATES], const int32_t trail_end, const uint32_t level_assigned[MAX_GATES], const NodeID antecedent[MAX_GATES]);
+void printClauseEvaluation(const PinValue assigns[ASSIGN_CLONES][MAX_GATES], const Clause& clause);
+void printClauses(const Clause clauses[MAX_LEARNED_CLAUSES], const PinValue assigns[ASSIGN_CLONES][MAX_GATES], const int32_t clauses_end);
 
-            Watcher w = watcher_header[l];
-            while (true) {
-                printWatcher(w);
-                if (w == watcher::kInvalid) {
-                    break;
-                }
-                // assert(w != clauses[w(Watcher::width - 1, 1)].next_watcher[w(0, 0)]);
-                w = clauses[w(Watcher::width - 1, 1)].next_watcher[w(0, 0)];
-            }
-
-            cout << endl;
-            if (polarity == ap_uint<1>(1)) {
-                break;
-            }
-        }
-    }
-}
-
-void printTrailSection(const int32_t start, const int32_t end, const Assignment trail[MAX_GATES], const uint32_t level_assigned[MAX_GATES], const NodeID antecedent[MAX_GATES]) {
-    cout << "Printing Trail from " << start << " to " << end;
-    for (int t = end - 1; t >= start; t--) {
-        if (t == end - 1 || level_assigned[trail[t + 1].gate_id] != level_assigned[trail[t].gate_id]) {
-            cout << endl
-                 << "(d = " << level_assigned[trail[t].gate_id] << ") : ";
-        }
-        trail[t].print();
-        cout << " (" << antecedent[trail[t].gate_id] << ")";
-        cout << ",  ";
-    }
-    cout << endl;
-}
-
-void printTrail(const Assignment trail[MAX_GATES], const int32_t trail_end, const uint32_t level_assigned[MAX_GATES], const NodeID antecedent[MAX_GATES]) {
-    printTrailSection(0, trail_end, trail, level_assigned, antecedent);
-}
-
-void printClauses(const Clause clauses[MAX_LEARNED_CLAUSES], const int32_t clauses_end) {
-    for (int32_t c = 0; c < clauses_end; c++) {
-        cout << c << ": ";
-        clauses[c].print();
-        cout << "\n";
-    }
-}
+uint32_t clause_conflict_count = 0;
 
 void Enqueue(const Assignment& a, const NodeID& reason, PinValue assigns[ASSIGN_CLONES][MAX_GATES], NodeID antecedent[MAX_GATES], uint32_t level_assigned[MAX_GATES], uint32_t location[MAX_GATES], const uint32_t decision_level, bool locked[MAX_LEARNED_CLAUSES], Assignment trail[MAX_GATES], int32_t& trail_end) {
 #pragma HLS INLINE
@@ -189,6 +146,17 @@ CollectClauseValuations_loop:
     }
 }
 
+void AttachClause(Clause& learnt_clause, const ClauseID learnt_clause_id, Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_LEARNED_CLAUSES], int32_t clause_activity[MAX_LEARNED_CLAUSES]) {
+#pragma HLS INLINE
+    // Sets up watches and add the learnt_clause to the database
+    learnt_clause.next_watcher[0] = watcher_header[learnt_clause.literals[0]];
+    watcher_header[learnt_clause.literals[0]] = (learnt_clause_id, ap_uint<1>(0));
+    learnt_clause.next_watcher[1] = watcher_header[learnt_clause.literals[1]];
+    watcher_header[learnt_clause.literals[1]] = (learnt_clause_id, ap_uint<1>(1));
+    clauses[learnt_clause_id] = learnt_clause;
+    clause_activity[learnt_clause_id] = 0;
+}
+
 void Propagate(const Gate gates[MAX_GATES], const TruthTable truth_tables[MAX_GATES], const OccurrenceIndex occurrence_header[MAX_GATES + 1], const GateID occurrence_gids[MAX_OCCURRENCES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_GATES], bool locked[MAX_LEARNED_CLAUSES], PinValue assigns[ASSIGN_CLONES][MAX_GATES], Assignment trail[MAX_GATES], int32_t& trail_end, int32_t& q_head, uint32_t level_assigned[MAX_GATES], NodeID antecedent[MAX_GATES], uint32_t location[MAX_GATES], const uint32_t decision_level, NodeID& conflict, uint64_t& propagation_count, uint64_t& gate_imply_count, uint64_t& clause_imply_count, uint64_t& gate_implication_count, uint64_t& clause_implication_count) {
 #pragma HLS INLINE
     bool conflict_occurred = false;
@@ -245,11 +213,14 @@ propagate_loop:
         const Literal falsified_literal = (pa.gate_id, ~polarity);
         Watcher w = watcher_header[falsified_literal];
 
+        if (w != watcher::kInvalid) {
+            cout << "Traversing watched clauses of " << literal::to_string(falsified_literal) << endl;
+        }
+
         watcher_header[falsified_literal] = watcher::kInvalid;  // detach the head
 
     watched_clauses_traversal:
         while (w != watcher::kInvalid) {
-            clause_imply_count++;
             const ClauseID clause_id = w(Watcher::width - 1, 1);
             const ap_uint<1> w_index = w[0];
             const ap_uint<1> other_index = ~w_index;
@@ -262,9 +233,22 @@ propagate_loop:
             LiteralValuation clause_valuations[MAX_LITERALS_PER_CLAUSE];
 #pragma HLS array_partition variable = clause_valuations complete
 
+            if (conflict_occurred) {
+                goto Next_Watcher;
+            }
+
+            cout << " inspecting " << clause_id.to_string(10) << " ";
+            clause.print();
+            cout << " ";
+            printClauseEvaluation(assigns, clause);
+            cout << "\n";
+
+            clause_imply_count++;
             CollectClauseValuations(assigns, clause.literals, clause_valuations);
 
-            if (conflict_occurred || clause_valuations[other_index] == literal_valuation::kTrue) {
+            if (clause_valuations[other_index] == literal_valuation::kTrue) {
+                cout << "  Skip: The other watched literal is kTrue\n";
+                // so don't bother finding another non-false literal since the falsified literal will be canceled before the other watched literal is canceled
                 goto Next_Watcher;
             }
 
@@ -272,9 +256,12 @@ propagate_loop:
             for (unsigned int swap_index = 2; swap_index < MAX_LITERALS_PER_CLAUSE; swap_index++) {
                 if (clause_valuations[swap_index] != literal_valuation::kFalse) {
                     // Swap literals in clause
+                    cout << "  Swap Watcher: ";
                     literal_to_watch = clause.literals[swap_index];
                     clause.literals[w_index] = literal_to_watch;
                     clause.literals[swap_index] = falsified_literal;
+                    clause.print();
+                    cout << "\n";
                     goto Next_Watcher;
                 }
             }
@@ -282,14 +269,17 @@ propagate_loop:
             // No swap found
             if (clause_valuations[other_index] == literal_valuation::kFalse) {
                 // Conflict
+                cout << "  Conflict: No other non-false literal was found\n";
                 conflict = (node_type::kClause, ap_uint<NODE_ID_BITS - 1>(clause_id));
                 conflict_occurred = true;
+                clause_conflict_count++;
             } else {
                 // Enqueue
                 const GateID enqueue_gid = other_watched_literal(Literal::width - 1, 1);
                 const PinValue enqueue_val = literal::isPositive(other_watched_literal) ? pin_value::kOne : pin_value::kZero;
 
                 const Assignment enqueue_assignment = {enqueue_gid, enqueue_val};
+                cout << "  Implication: " << enqueue_assignment.to_string() << "\n";
                 const NodeID enqueue_reason = (node_type::kClause, clause_id);
                 clause_implication_count++;
                 Enqueue(enqueue_assignment, enqueue_reason, assigns, antecedent, level_assigned, location, decision_level, locked, trail, trail_end);
@@ -331,17 +321,18 @@ ConflictAnalysis_loop:
         // assert(node_to_resolve != node_id::kDecision);  // otherwise we would have found UIP
 
         // Resolve Node using stamping method: only "anchor" literals assigned at a lower decision level are stored in the learnt_clause
-        if (node_to_resolve == node_id::kForgot) {
+        if (node_to_resolve == node_id::kForgot || node_to_resolve[NodeID::width - 1] == node_type::kClause) {
             resolve_forgot_count++;
             keep_clause = false;
             ret = false;
+            break;
         } else if (node_to_resolve[NodeID::width - 1] == node_type::kGate) {
             resolve_gate_count++;
             const GateID gid = node_to_resolve(GateID::width - 1, 0);
             const Gate g = gates[gid];
         resolve_gate_loop:
             for (Offset o = 0; o < PINS_PER_GATE; o++) {
-                #pragma HLS DEPENDENCE variable=stamps inter false
+#pragma HLS DEPENDENCE variable = stamps inter false
                 GateID edge = g.edges[o];
                 if (edge != gate_id::kNoConnect && pin_value::isAssigned(assigns[0][edge]) && stamps[edge] != conflict_id && level_assigned[edge] != 0) {
                     Literal l;
@@ -365,13 +356,13 @@ ConflictAnalysis_loop:
                 }
             }
         } else {
-            // assert(node_to_resolve[NodeID::width - 1] == node_type::kClause);
+            assert(node_to_resolve[NodeID::width - 1] == node_type::kClause);
             resolve_clause_count++;
             ClauseID cid = node_to_resolve(ClauseID::width - 1, 0);
             clause_activity[cid]++;
         resolve_clause_loop:
             for (uint32_t i = 0; i < MAX_LITERALS_PER_CLAUSE; i++) {
-                #pragma HLS DEPENDENCE variable=stamps inter false
+#pragma HLS DEPENDENCE variable = stamps inter false
                 const Literal l = clauses[cid].literals[i];
                 if (l == literal::kInvalid) {
                     break;
@@ -400,7 +391,7 @@ ConflictAnalysis_loop:
         t--;  // t was at trail_end or the already resolved assignment
     trail_stamp_search:
         while (stamps[trail[t].gate_id] != conflict_id) {
-            // assert(antecedent[trail[t].gate_id] != node_id::kDecision);  // There is no way we should pop through a decision level during Resolution
+            assert(antecedent[trail[t].gate_id] != node_id::kDecision);  // There is no way we should pop through a decision level during Resolution
             pop_unstamped_count++;
             TrailPop(trail, trail_end, assigns, level_assigned, antecedent, locked);
             t--;
@@ -426,18 +417,12 @@ ConflictAnalysis_loop:
             learnt_node_id = (node_type::kClause, ap_uint<NODE_ID_BITS - 1>(learnt_clause_id));
             learnt_clause.literals[0] = asserting_literal;
 
-            // Swap in the second watcher
+            // Swap the second most recently assigned literal into index 1
             Literal temp = learnt_clause.literals[1];
             learnt_clause.literals[1] = learnt_clause.literals[swap_index];
             learnt_clause.literals[swap_index] = temp;
 
-            // Add the learnt_clause to the database
-            learnt_clause.next_watcher[0] = watcher_header[learnt_clause.literals[0]];
-            watcher_header[learnt_clause.literals[0]] = (learnt_clause_id, ap_uint<1>(0));
-            learnt_clause.next_watcher[1] = watcher_header[learnt_clause.literals[1]];
-            watcher_header[learnt_clause.literals[1]] = (learnt_clause_id, ap_uint<1>(1));
-            clauses[learnt_clause_id] = learnt_clause;
-            clause_activity[learnt_clause_id] = 0;
+            AttachClause(learnt_clause, learnt_clause_id, watcher_header, clauses, clause_activity);
         }
     } else {
         learnt_node_id = node_id::kForgot;
@@ -666,5 +651,85 @@ solve_loop:
         StoreTrail(trail, g_trail);
     }
     StoreMetrics(is_sat, g_is_sat, conflict_count, g_conflict_count, decision_count, g_decision_count, propagation_count, g_propagation_count, gate_imply_count, g_gate_imply_count, clause_imply_count, g_clause_imply_count, resolve_gate_count, g_resolve_gate_count, resolve_forgot_count, g_resolve_forgot_count, resolve_clause_count, g_resolve_clause_count, pop_unstamped_count, g_pop_unstamped_count, pick_branching_count, g_pick_branching_count, cancel_until_count, g_cancel_until_count, reduce_clauses_count, g_reduce_clauses_count, gate_implication_count, g_gate_implication_count, clause_implication_count, g_clause_implication_count);
+    printClauses(clauses, assigns, 128);
+    printWatchLists(watcher_header, clauses, 128);
+    cout << clause_conflict_count << " conflicts from clauses" << endl;
 }
+}
+
+void printWatchLists(Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_GATES], const uint32_t num_gates) {
+    for (GateID gid = 0; gid < num_gates; gid++) {
+        for (int i = 0; i < 2; i++) {
+            ap_uint<1> polarity(i);
+            Literal l;
+            l = (gid, polarity);
+            Watcher w = watcher_header[l];
+
+            if (w == watcher::kInvalid) {
+                continue;
+            }
+            cout << literal::to_string(l) << ": ";
+            while (true) {
+                printWatcher(w);
+                if (w == watcher::kInvalid) {
+                    break;
+                }
+                if (clauses[w(Watcher::width - 1, 1)].literals[w(0, 0)] != l) {
+                    cout << "Weird - " << literal::to_string(clauses[w(Watcher::width - 1, 1)].literals[w(0, 0)]) << " != " << literal::to_string(l) << endl;
+                    cout << "ClauseID = " << w(Watcher::width - 1, 1).to_string(10) << endl;
+                    cout << "wIndex = " << w(0, 0).to_string(10) << endl;
+                    cout << "clauses[ClauseID] = ";
+                    clauses[w(Watcher::width - 1, 1)].print();
+                    cout << endl;
+                }
+                assert(clauses[w(Watcher::width - 1, 1)].literals[w(0, 0)] == l);
+                // assert(w != clauses[w(Watcher::width - 1, 1)].next_watcher[w(0, 0)]);
+                w = clauses[w(Watcher::width - 1, 1)].next_watcher[w(0, 0)];
+            }
+
+            cout << endl;
+        }
+    }
+}
+
+void printTrailSection(const int32_t start, const int32_t end, const Assignment trail[MAX_GATES], const uint32_t level_assigned[MAX_GATES], const NodeID antecedent[MAX_GATES]) {
+    cout << "Printing Trail from " << start << " to " << end;
+    for (int t = end - 1; t >= start; t--) {
+        if (t == end - 1 || level_assigned[trail[t + 1].gate_id] != level_assigned[trail[t].gate_id]) {
+            cout << endl
+                 << "(d = " << level_assigned[trail[t].gate_id] << ") : ";
+        }
+        cout << trail[t].to_string() << " (" << antecedent[trail[t].gate_id] << ")";
+        cout << ",  ";
+    }
+    cout << endl;
+}
+
+void printTrail(const Assignment trail[MAX_GATES], const int32_t trail_end, const uint32_t level_assigned[MAX_GATES], const NodeID antecedent[MAX_GATES]) {
+    printTrailSection(0, trail_end, trail, level_assigned, antecedent);
+}
+
+void printClauseEvaluation(const PinValue assigns[ASSIGN_CLONES][MAX_GATES], const Clause& clause) {
+    LiteralValuation valuations[MAX_LITERALS_PER_CLAUSE];
+    CollectClauseValuations(assigns, clause.literals, valuations);
+
+    for (int i = 0; i < MAX_LITERALS_PER_CLAUSE; i++) {
+        if (clause.literals[i] == literal::kInvalid) {
+            break;
+        }
+        cout << literal_valuation::to_string(valuations[i]);
+    }
+}
+
+void printClauses(const Clause clauses[MAX_LEARNED_CLAUSES], const PinValue assigns[ASSIGN_CLONES][MAX_GATES], const int32_t clauses_end) {
+    for (int32_t c = 0; c < clauses_end; c++) {
+        if (clauses[c].literals[0] == literal::kInvalid) {
+            continue;
+        }
+        cout << c << ": ";
+        clauses[c].print();
+        cout << " ";
+        printClauseEvaluation(assigns, clauses[c]);
+        cout << "\n";
+    }
 }
