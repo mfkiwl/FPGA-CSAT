@@ -23,7 +23,7 @@ CXX_DEBUG_FLAGS += -O0 -g
 CXX_PRODUCTION_FLAGS += -O3
 LDFLAGS += -L$(XILINX_XRT)/lib -pthread -lOpenCL -lrt -lstdc++ 
 
-VPP_FLAGS += -t $(TARGET) --platform $(PLATFORM) --save-temps --hls.pre_tcl $(PROJ_ROOT)/config/hls_config.tcl
+VPP_FLAGS += -t $(TARGET) --platform $(PLATFORM) --save-temps --hls.pre_tcl $(PROJ_ROOT)/config/hls_config.tcl --kernel_frequency 400
 VPP_DEBUG_FLAGS = -g --profile.data all:all:all
 VPP_PRODUCTION_FLAGS = -O3
 
