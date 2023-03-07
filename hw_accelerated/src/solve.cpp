@@ -12,8 +12,6 @@ void printTrail(const Assignment trail[MAX_GATES], const int32_t trail_end, cons
 void printClauseEvaluation(const PinValue assigns[ASSIGN_CLONES][MAX_GATES], const Clause& clause);
 void printClauses(const Clause clauses[MAX_LEARNED_CLAUSES], const PinValue assigns[ASSIGN_CLONES][MAX_GATES], const int32_t clauses_end);
 
-uint32_t clause_conflict_count = 0;
-
 void Enqueue(const Assignment& a, const NodeID& reason, PinValue assigns[ASSIGN_CLONES][MAX_GATES], NodeID antecedent[MAX_GATES], uint32_t level_assigned[MAX_GATES], uint32_t location[MAX_GATES], const uint32_t decision_level, bool locked[MAX_LEARNED_CLAUSES], Assignment trail[MAX_GATES], int32_t& trail_end) {
 #pragma HLS INLINE
     // cout << "Enqueue " << a.gate_id.to_string(10) << " = " << a.value.to_string(10) << " @ " << decision_level << endl;
@@ -213,9 +211,9 @@ propagate_loop:
         const Literal falsified_literal = (pa.gate_id, ~polarity);
         Watcher w = watcher_header[falsified_literal];
 
-        if (w != watcher::kInvalid) {
-            cout << "Traversing watched clauses of " << literal::to_string(falsified_literal) << endl;
-        }
+        // if (w != watcher::kInvalid) {
+        //     cout << "Traversing watched clauses of " << literal::to_string(falsified_literal) << endl;
+        // }
 
         watcher_header[falsified_literal] = watcher::kInvalid;  // detach the head
 
@@ -237,17 +235,17 @@ propagate_loop:
                 goto Next_Watcher;
             }
 
-            cout << " inspecting " << clause_id.to_string(10) << " ";
-            clause.print();
-            cout << " ";
-            printClauseEvaluation(assigns, clause);
-            cout << "\n";
+            // cout << " inspecting " << clause_id.to_string(10) << " ";
+            // clause.print();
+            // cout << " ";
+            // printClauseEvaluation(assigns, clause);
+            // cout << "\n";
 
             clause_imply_count++;
             CollectClauseValuations(assigns, clause.literals, clause_valuations);
 
             if (clause_valuations[other_index] == literal_valuation::kTrue) {
-                cout << "  Skip: The other watched literal is kTrue\n";
+                // cout << "  Skip: The other watched literal is kTrue\n";
                 // so don't bother finding another non-false literal since the falsified literal will be canceled before the other watched literal is canceled
                 goto Next_Watcher;
             }
@@ -256,12 +254,12 @@ propagate_loop:
             for (unsigned int swap_index = 2; swap_index < MAX_LITERALS_PER_CLAUSE; swap_index++) {
                 if (clause_valuations[swap_index] != literal_valuation::kFalse) {
                     // Swap literals in clause
-                    cout << "  Swap Watcher: ";
+                    // cout << "  Swap Watcher: ";
                     literal_to_watch = clause.literals[swap_index];
                     clause.literals[w_index] = literal_to_watch;
                     clause.literals[swap_index] = falsified_literal;
-                    clause.print();
-                    cout << "\n";
+                    // clause.print();
+                    // cout << "\n";
                     goto Next_Watcher;
                 }
             }
@@ -269,17 +267,16 @@ propagate_loop:
             // No swap found
             if (clause_valuations[other_index] == literal_valuation::kFalse) {
                 // Conflict
-                cout << "  Conflict: No other non-false literal was found\n";
+                // cout << "  Conflict: No other non-false literal was found\n";
                 conflict = (node_type::kClause, ap_uint<NODE_ID_BITS - 1>(clause_id));
                 conflict_occurred = true;
-                clause_conflict_count++;
             } else {
                 // Enqueue
                 const GateID enqueue_gid = other_watched_literal(Literal::width - 1, 1);
                 const PinValue enqueue_val = literal::isPositive(other_watched_literal) ? pin_value::kOne : pin_value::kZero;
 
                 const Assignment enqueue_assignment = {enqueue_gid, enqueue_val};
-                cout << "  Implication: " << enqueue_assignment.to_string() << "\n";
+                // cout << "  Implication: " << enqueue_assignment.to_string() << "\n";
                 const NodeID enqueue_reason = (node_type::kClause, clause_id);
                 clause_implication_count++;
                 Enqueue(enqueue_assignment, enqueue_reason, assigns, antecedent, level_assigned, location, decision_level, locked, trail, trail_end);
@@ -298,8 +295,11 @@ propagate_loop:
         }
     }
 }
-
-bool ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_LEARNED_CLAUSES], int32_t clause_activity[MAX_LEARNED_CLAUSES], ClauseAllocator& clause_allocator, PinValue assigns[ASSIGN_CLONES][MAX_GATES], bool locked[MAX_GATES], const Assignment trail[MAX_GATES], int32_t& trail_end, const uint32_t decision_level, const NodeID antecedent[MAX_GATES], uint32_t stamps[MAX_GATES], uint32_t level_assigned[MAX_GATES], ArrayQueue& VMTF_queue, uint32_t& backjump_level, Assignment& asserting_assignment, NodeID& learnt_node_id, uint32_t& resolve_forgot_count, uint32_t& resolve_gate_count, uint32_t& resolve_clause_count, uint64_t& pop_unstamped_count) {
+#ifdef USE_VSIDS
+bool ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_LEARNED_CLAUSES], int32_t clause_activity[MAX_LEARNED_CLAUSES], ClauseAllocator& clause_allocator, PinValue assigns[ASSIGN_CLONES][MAX_GATES], bool locked[MAX_GATES], const Assignment trail[MAX_GATES], int32_t& trail_end, const uint32_t decision_level, const NodeID antecedent[MAX_GATES], uint32_t stamps[MAX_GATES], uint32_t level_assigned[MAX_GATES], VSIDS& strategy, uint32_t& backjump_level, Assignment& asserting_assignment, NodeID& learnt_node_id, uint32_t& resolve_forgot_count, uint32_t& resolve_gate_count, uint32_t& resolve_clause_count, uint64_t& pop_unstamped_count) {
+#else
+bool ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_LEARNED_CLAUSES], int32_t clause_activity[MAX_LEARNED_CLAUSES], ClauseAllocator& clause_allocator, PinValue assigns[ASSIGN_CLONES][MAX_GATES], bool locked[MAX_GATES], const Assignment trail[MAX_GATES], int32_t& trail_end, const uint32_t decision_level, const NodeID antecedent[MAX_GATES], uint32_t stamps[MAX_GATES], uint32_t level_assigned[MAX_GATES], VMTF& strategy, uint32_t& backjump_level, Assignment& asserting_assignment, NodeID& learnt_node_id, uint32_t& resolve_forgot_count, uint32_t& resolve_gate_count, uint32_t& resolve_clause_count, uint64_t& pop_unstamped_count) {
+#endif
 #pragma HLS INLINE
     static uint16_t conflict_id = 0;
 
@@ -321,7 +321,7 @@ ConflictAnalysis_loop:
         // assert(node_to_resolve != node_id::kDecision);  // otherwise we would have found UIP
 
         // Resolve Node using stamping method: only "anchor" literals assigned at a lower decision level are stored in the learnt_clause
-        if (node_to_resolve == node_id::kForgot || node_to_resolve[NodeID::width - 1] == node_type::kClause) {
+        if (node_to_resolve == node_id::kForgot) {
             resolve_forgot_count++;
             keep_clause = false;
             ret = false;
@@ -333,6 +333,9 @@ ConflictAnalysis_loop:
         resolve_gate_loop:
             for (Offset o = 0; o < PINS_PER_GATE; o++) {
 #pragma HLS DEPENDENCE variable = stamps inter false
+#ifdef USE_VSIDS
+#pragma HLS DEPENDENCE variable = strategy.activity inter false  // edges are unique
+#endif
                 GateID edge = g.edges[o];
                 if (edge != gate_id::kNoConnect && pin_value::isAssigned(assigns[0][edge]) && stamps[edge] != conflict_id && level_assigned[edge] != 0) {
                     Literal l;
@@ -351,7 +354,7 @@ ConflictAnalysis_loop:
                     } else if (level_assigned[edge] == decision_level) {
                         needs_resolution_count++;
                     }
-                    VMTF_queue.bump(edge);
+                    strategy.bump(edge);
                     stamps[edge] = conflict_id;
                 }
             }
@@ -363,6 +366,9 @@ ConflictAnalysis_loop:
         resolve_clause_loop:
             for (uint32_t i = 0; i < MAX_LITERALS_PER_CLAUSE; i++) {
 #pragma HLS DEPENDENCE variable = stamps inter false
+#ifdef USE_VSIDS
+#pragma HLS DEPENDENCE variable = strategy.activity inter false  // vars are unique
+#endif
                 const Literal l = clauses[cid].literals[i];
                 if (l == literal::kInvalid) {
                     break;
@@ -383,7 +389,7 @@ ConflictAnalysis_loop:
                     } else if (level_assigned[var] == decision_level) {
                         needs_resolution_count++;
                     }
-                    VMTF_queue.bump(var);
+                    strategy.bump(var);
                     stamps[var] = conflict_id;
                 }
             }
@@ -477,24 +483,6 @@ watcher_list_cleanup:
     }
 }
 
-bool PickBranching(ArrayQueue& VMTF_queue, GateID& VMTF_next_search, uint32_t level_assigned[MAX_GATES], PinValue assigns[ASSIGN_CLONES][MAX_GATES], Assignment& branching_assignment, uint64_t& pick_branching_count) {
-#pragma HLS INLINE
-    // Search for next unknown variable
-    GateID search_gate = VMTF_next_search;
-PickBranching_loop:
-    while (search_gate != gate_id::kNoConnect) {
-#pragma HLS pipeline II = 2
-        pick_branching_count++;
-        VMTF_next_search = VMTF_queue.links[VMTF_next_search].forward;
-        if (level_assigned[search_gate] == UNASSIGNED) {
-            branching_assignment = Assignment(search_gate, pin_value::restorePhase(assigns[0][search_gate]));
-            return true;
-        }
-        search_gate = VMTF_next_search;
-    }
-    return false;
-}
-
 void StoreTrail(const Assignment trail[MAX_GATES], Assignment g_trail[MAX_GATES]) {
 #pragma HLS INLINE
 StoreTrail_loop:
@@ -565,11 +553,13 @@ initialize_RAM_occurrences:
     uint32_t decision_level = 0;
     int32_t trail_end = 0;
     int32_t q_head = 0;
-
-    static ArrayQueue VMTF_queue;
-#pragma HLS bind_storage variable = VMTF_queue.links type = RAM_T2P
-    VMTF_queue.initialize(num_gates);
-    GateID VMTF_next_search = 0;
+#ifdef USE_VSIDS
+    static VSIDS strategy;
+#else
+    static VMTF strategy;
+#pragma HLS bind_storage variable = strategy.links type = RAM_T2P
+#endif
+    strategy.initialize(num_gates);
 
     int32_t clause_activity[MAX_LEARNED_CLAUSES];
     static bool locked[MAX_LEARNED_CLAUSES];
@@ -617,13 +607,18 @@ solve_loop:
             // uint32_t asserting_location = AssertingLocation(conflict, gates, clauses, assigns, location);
             // assert(asserting_location + 1 >= q_head);
             // CancelUntil(asserting_location + 1, trail, trail_end, assigns, level_assigned, antecedent, locked, cancel_until_count);
-            if (!ConflictAnalysis(conflict, gates, watcher_header, clauses, clause_activity, clause_allocator, assigns, locked, trail, trail_end, decision_level, antecedent, stamps, level_assigned, VMTF_queue, backjump_level, asserting_assignment, learnt_node_id, resolve_forgot_count, resolve_gate_count, resolve_clause_count, pop_unstamped_count)) {
+            if (!ConflictAnalysis(conflict, gates, watcher_header, clauses, clause_activity, clause_allocator, assigns, locked, trail, trail_end, decision_level, antecedent, stamps, level_assigned, strategy, backjump_level, asserting_assignment, learnt_node_id, resolve_forgot_count, resolve_gate_count, resolve_clause_count, pop_unstamped_count)) {
                 backjump_level = decision_level - 1;
                 Assignment a = trail[trail_lim[decision_level - 1]];
                 asserting_assignment = {a.gate_id, pin_value::inverse(a.value)};
             };
-            // assert(VMTF_queue.size() == num_gates);
-            VMTF_next_search = VMTF_queue.head;
+            strategy.postConflict();
+
+#ifdef USE_VSIDS
+            if (strategy.rescaleNeeded()) {
+                strategy.rescale();
+            }
+#endif
 
             int32_t backtrack_step = trail_lim[backjump_level];
             // assert(backtrack_step < MAX_GATES);
@@ -637,7 +632,7 @@ solve_loop:
         } else {
             trail_lim[decision_level] = trail_end;
             Assignment branching_assignment;
-            if (!PickBranching(VMTF_queue, VMTF_next_search, level_assigned, assigns, branching_assignment, pick_branching_count)) {
+            if (!strategy.pickBranching(assigns[0], branching_assignment, pick_branching_count)) {
                 cout << "Kernel: SAT" << endl;
                 is_sat = true;
                 break;
@@ -651,9 +646,8 @@ solve_loop:
         StoreTrail(trail, g_trail);
     }
     StoreMetrics(is_sat, g_is_sat, conflict_count, g_conflict_count, decision_count, g_decision_count, propagation_count, g_propagation_count, gate_imply_count, g_gate_imply_count, clause_imply_count, g_clause_imply_count, resolve_gate_count, g_resolve_gate_count, resolve_forgot_count, g_resolve_forgot_count, resolve_clause_count, g_resolve_clause_count, pop_unstamped_count, g_pop_unstamped_count, pick_branching_count, g_pick_branching_count, cancel_until_count, g_cancel_until_count, reduce_clauses_count, g_reduce_clauses_count, gate_implication_count, g_gate_implication_count, clause_implication_count, g_clause_implication_count);
-    printClauses(clauses, assigns, 128);
-    printWatchLists(watcher_header, clauses, 128);
-    cout << clause_conflict_count << " conflicts from clauses" << endl;
+    // printClauses(clauses, assigns, 128);
+    // printWatchLists(watcher_header, clauses, 128);
 }
 }
 

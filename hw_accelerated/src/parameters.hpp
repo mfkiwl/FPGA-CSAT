@@ -21,3 +21,6 @@ constexpr unsigned int NODE_ID_BITS = ((GATE_ID_BITS > CLAUSE_ID_BITS) ? GATE_ID
 constexpr unsigned int OFFSET_BITS = ceillog2(PINS_PER_GATE);
 constexpr unsigned int OCCURRENCE_BITS = ceillog2(MAX_OCCURRENCES + 1);  // +1 for the end occurrence index
 constexpr unsigned int ASSIGN_CLONES = MAX_LITERALS_PER_CLAUSE;          // allows single read cycle for gathering gate + clause state
+
+#define USE_VSIDS
+constexpr float VAR_INC_INCREASE = 1.052631617F;  // 1 / .95 from MiniSAT var_decay

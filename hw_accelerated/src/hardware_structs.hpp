@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cfloat>
+#include <string>
+
 #include "ap_int.h"
 #include "parameters.hpp"
 #include "shared_parameters.hpp"
@@ -177,20 +180,21 @@ struct Assignment {
     }
 };
 
-class ArrayQueue {
+class VMTF {
    public:
-    ArrayQueue(){};
+    VMTF(){};
 
     void initialize(const uint32_t num_gates) {
         head = 0;
         links[0].backward = gate_id::kNoConnect;
-    initialize_ArrayQueue:
-        for (unsigned int i = 0; i < num_gates - 1; i++) {
+    initialize_VMTF:
+        for (GateID i = 0; i < num_gates - 1; i++) {
 #pragma HLS loop_tripcount max = MAX_GATES
             links[i].forward = i + 1;
             links[i + 1].backward = i;
         }
         links[num_gates - 1].forward = gate_id::kNoConnect;
+        next_search = 0;
     }
 
     void bump(GateID g) {
@@ -210,6 +214,27 @@ class ArrayQueue {
             links[g].backward = gate_id::kNoConnect;
             head = g;
         }
+    }
+
+    bool pickBranching(const PinValue assigns[MAX_GATES], Assignment& branching_assignment, uint64_t& pick_branching_count) {
+#pragma HLS INLINE
+        GateID search_gate = next_search;
+    pickBranching_VMTF_loop:
+        while (search_gate != gate_id::kNoConnect) {
+#pragma HLS pipeline II = 2
+            pick_branching_count++;
+            next_search = links[next_search].forward;
+            if (pin_value::isUnknown(assigns[search_gate])) {
+                branching_assignment = Assignment(search_gate, pin_value::restorePhase(assigns[search_gate]));
+                return true;
+            }
+            search_gate = next_search;
+        }
+        return false;
+    }
+
+    void postConflict() {
+        next_search = head;
     }
 
     void print() {
@@ -236,13 +261,91 @@ class ArrayQueue {
     }
 
     struct Entry {
-        // Entry() : forward(NO_CONNECT), backward(NO_CONNECT){};
         GateID forward;
         GateID backward;
     };
 
     GateID head;
+    GateID next_search;
     Entry links[MAX_GATES];
+};
+
+class VSIDS {
+   public:
+    VSIDS(){};
+
+    void initialize(const uint32_t num_gates) {
+        m_num_gates = num_gates;
+        var_inc = FLT_MIN;
+    initialize_VSIDS:
+        for (GateID i = 0; i < num_gates; i++) {
+#pragma HLS loop_tripcount max = MAX_GATES
+            activity[i] = 0;
+        }
+    }
+
+    void increaseVarInc() {
+        var_inc *= VAR_INC_INCREASE;
+    }
+
+    void bump(GateID gid) {
+        float temp = activity[gid] + var_inc;
+        activity[gid] = temp;
+        max_activity = (temp > max_activity) ? temp : max_activity;
+    }
+
+    bool rescaleNeeded() {
+        return bool((FLT_MAX - var_inc) <= max_activity);
+    }
+
+    void rescale() {
+    rescale_VSIDS:
+        for (GateID i = 0; i < m_num_gates; i++) {
+#pragma HLS loop_tripcount max = MAX_GATES
+            activity[i] *= FLT_MIN;
+        }
+        var_inc *= FLT_MIN;
+    }
+
+    bool pickBranching(const PinValue assigns[MAX_GATES], Assignment& branching_assignment, uint64_t& pick_branching_count) {
+#pragma HLS INLINE
+        bool found = false;
+        float candidate_score = -1;
+
+    pickBranching_VSIDS_loop:
+        for (GateID i = 0; i < m_num_gates; i++) {
+#pragma HLS loop_tripcount max = MAX_GATES
+#pragma HLS pipeline II = 2  // fcmp is a slow operation - this allows higher clock speed
+            pick_branching_count++;
+            if (pin_value::isUnknown(assigns[i]) && activity[i] > candidate_score) {
+                found = true;
+                branching_assignment = Assignment(i, pin_value::restorePhase(assigns[i]));
+                candidate_score = activity[i];
+            }
+        }
+        return found;
+    }
+
+    void postConflict() {
+        increaseVarInc();
+    }
+
+    void print(const uint32_t num_gates) {
+        int count = 0;
+        for (GateID i = 0; i < num_gates; i++) {
+            if ((++count % 8) == 0) {
+                cout << "\n";
+            }
+            cout << i << " : " << activity[i] << " ";
+        }
+        cout << "\nvar_inc " << var_inc << "\n";
+        cout << "max_activity = " << max_activity << endl;
+    }
+
+    uint32_t m_num_gates;
+    float var_inc;
+    float activity[MAX_GATES];
+    float max_activity;
 };
 
 class ClauseAllocator {
@@ -259,7 +362,7 @@ class ClauseAllocator {
             links[i].forward = i + 1;
             links[i + 1].backward = i;
         }
-    };
+    }
 
     bool isFull() {
 #pragma HLS INLINE
