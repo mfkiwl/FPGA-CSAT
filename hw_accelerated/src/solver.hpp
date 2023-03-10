@@ -26,6 +26,7 @@ class Solver {
     alignas(4096) uint32_t conflict_count;
     alignas(4096) uint32_t decision_count;
     alignas(4096) uint64_t propagation_count;
+    alignas(4096) uint64_t burst_imply_count;
     alignas(4096) uint64_t gate_imply_count;
     alignas(4096) uint64_t clause_imply_count;
     alignas(4096) uint32_t resolve_gate_count;
@@ -37,8 +38,8 @@ class Solver {
     alignas(4096) uint32_t reduce_clauses_count;
     alignas(4096) uint64_t gate_implication_count;
     alignas(4096) uint64_t clause_implication_count;
-    const vector<string> metric_names = {"conflict_count", "decision_count", "propagation_count", "gate_imply_count", "clause_imply_count", "resolve_gate_count", "resolve_forgot_count", "resolve_clause_count", "pop_unstamped_count", "pick_branching_count", "cancel_until_count", "reduce_clauses_count", "gate_implication_count", "clause_implication_count"};
-    const vector<string> metric_descriptions = {"conflicts occurred", "decisions occurred", "propagations occurred", "gate imply calls", "clause imply calls", "gates resolved", "forgotten clauses resolved", "learned clauses resolved", "unstamped trail assignments popped during CA", "variables considered during decide", "assignments cancled during backtracking", "clauses DB reductions", "implications from gates", "implications from clauses"};
+    const vector<string> metric_names = {"conflict_count", "decision_count", "propagation_count", "burst_imply_count", "gate_imply_count", "clause_imply_count", "resolve_gate_count", "resolve_forgot_count", "resolve_clause_count", "pop_unstamped_count", "pick_branching_count", "cancel_until_count", "reduce_clauses_count", "gate_implication_count", "clause_implication_count"};
+    const vector<string> metric_descriptions = {"conflicts occurred", "decisions occurred", "propagations occurred", "burst imply count", "gate imply calls", "clause imply calls", "gates resolved", "forgotten clauses resolved", "learned clauses resolved", "unstamped trail assignments popped during CA", "variables considered during decide", "assignments cancled during backtracking", "clauses DB reductions", "implications from gates", "implications from clauses"};
 
     unordered_map<string, bool> satisfying_assignment;
     std::chrono::duration<double> duration;
@@ -114,6 +115,7 @@ void Solver::_solve() {
     conflict_count = 0;
     decision_count = 0;
     propagation_count = 0;
+    burst_imply_count = 0;
     gate_imply_count = 0;
     clause_imply_count = 0;
     resolve_gate_count = 0;
@@ -136,6 +138,7 @@ void Solver::_solve() {
     OCL_CHECK(err, cl::Buffer conflict_count_buffer(context, CL_MEM_USE_HOST_PTR, sizeof(conflict_count), &conflict_count, &err));
     OCL_CHECK(err, cl::Buffer decision_count_buffer(context, CL_MEM_USE_HOST_PTR, sizeof(decision_count), &decision_count, &err));
     OCL_CHECK(err, cl::Buffer propagation_count_buffer(context, CL_MEM_USE_HOST_PTR, sizeof(propagation_count), &propagation_count, &err));
+    OCL_CHECK(err, cl::Buffer burst_imply_count_buffer(context, CL_MEM_USE_HOST_PTR, sizeof(burst_imply_count), &burst_imply_count, &err));
     OCL_CHECK(err, cl::Buffer gate_imply_count_buffer(context, CL_MEM_USE_HOST_PTR, sizeof(gate_imply_count), &gate_imply_count, &err));
     OCL_CHECK(err, cl::Buffer clause_imply_count_buffer(context, CL_MEM_USE_HOST_PTR, sizeof(clause_imply_count), &clause_imply_count, &err));
     OCL_CHECK(err, cl::Buffer resolve_gate_count_buffer(context, CL_MEM_USE_HOST_PTR, sizeof(resolve_gate_count), &resolve_gate_count, &err));
@@ -164,17 +167,18 @@ void Solver::_solve() {
     OCL_CHECK(err, err = solve_kernel.setArg(9, conflict_count_buffer));
     OCL_CHECK(err, err = solve_kernel.setArg(10, decision_count_buffer));
     OCL_CHECK(err, err = solve_kernel.setArg(11, propagation_count_buffer));
-    OCL_CHECK(err, err = solve_kernel.setArg(12, gate_imply_count_buffer));
-    OCL_CHECK(err, err = solve_kernel.setArg(13, clause_imply_count_buffer));
-    OCL_CHECK(err, err = solve_kernel.setArg(14, resolve_gate_count_buffer));
-    OCL_CHECK(err, err = solve_kernel.setArg(15, resolve_forgot_count_buffer));
-    OCL_CHECK(err, err = solve_kernel.setArg(16, resolve_clause_count_buffer));
-    OCL_CHECK(err, err = solve_kernel.setArg(17, pop_unstamped_count_buffer));
-    OCL_CHECK(err, err = solve_kernel.setArg(18, pick_branching_count_buffer));
-    OCL_CHECK(err, err = solve_kernel.setArg(19, cancel_until_count_buffer));
-    OCL_CHECK(err, err = solve_kernel.setArg(20, reduce_clauses_count_buffer));
-    OCL_CHECK(err, err = solve_kernel.setArg(21, gate_implication_count_buffer));
-    OCL_CHECK(err, err = solve_kernel.setArg(22, clause_implication_count_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(12, burst_imply_count_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(13, gate_imply_count_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(14, clause_imply_count_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(15, resolve_gate_count_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(16, resolve_forgot_count_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(17, resolve_clause_count_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(18, pop_unstamped_count_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(19, pick_branching_count_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(20, cancel_until_count_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(21, reduce_clauses_count_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(22, gate_implication_count_buffer));
+    OCL_CHECK(err, err = solve_kernel.setArg(23, clause_implication_count_buffer));
 
     // Initialize Arrays
     for (GateID gid = 0; gid < graph.nodes.size(); gid++) {
@@ -195,7 +199,7 @@ void Solver::_solve() {
     g_occurrence_header[graph.occurrence_tables.size()] = occ;
 
     // Copy input data to device global memory
-    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({g_gates_buffer, g_initial_assigns_buffer, g_truth_tables_buffer, g_trail_buffer, is_sat_buffer, conflict_count_buffer, decision_count_buffer, propagation_count_buffer, gate_imply_count_buffer, clause_imply_count_buffer, resolve_gate_count_buffer, resolve_forgot_count_buffer, resolve_clause_count_buffer, pop_unstamped_count_buffer, pick_branching_count_buffer, cancel_until_count_buffer, reduce_clauses_count_buffer, gate_implication_count_buffer, clause_implication_count_buffer}, 0));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({g_gates_buffer, g_initial_assigns_buffer, g_truth_tables_buffer, g_trail_buffer, is_sat_buffer, conflict_count_buffer, decision_count_buffer, propagation_count_buffer, burst_imply_count_buffer, gate_imply_count_buffer, clause_imply_count_buffer, resolve_gate_count_buffer, resolve_forgot_count_buffer, resolve_clause_count_buffer, pop_unstamped_count_buffer, pick_branching_count_buffer, cancel_until_count_buffer, reduce_clauses_count_buffer, gate_implication_count_buffer, clause_implication_count_buffer}, 0));
 
     // Launch the Kernel
     cl::Event solve_event;
@@ -207,7 +211,7 @@ void Solver::_solve() {
     cout << "solve_event_time = " << std::fixed << std::setprecision(4) << solve_event_time << " s" << endl;
 
     // Copy Result from Device Global Memory to Host Local Memory
-    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({g_trail_buffer, is_sat_buffer, conflict_count_buffer, decision_count_buffer, propagation_count_buffer, gate_imply_count_buffer, clause_imply_count_buffer, resolve_gate_count_buffer, resolve_forgot_count_buffer, resolve_clause_count_buffer, pop_unstamped_count_buffer, pick_branching_count_buffer, cancel_until_count_buffer, reduce_clauses_count_buffer, gate_implication_count_buffer, clause_implication_count_buffer}, CL_MIGRATE_MEM_OBJECT_HOST));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({g_trail_buffer, is_sat_buffer, conflict_count_buffer, decision_count_buffer, propagation_count_buffer, burst_imply_count_buffer, gate_imply_count_buffer, clause_imply_count_buffer, resolve_gate_count_buffer, resolve_forgot_count_buffer, resolve_clause_count_buffer, pop_unstamped_count_buffer, pick_branching_count_buffer, cancel_until_count_buffer, reduce_clauses_count_buffer, gate_implication_count_buffer, clause_implication_count_buffer}, CL_MIGRATE_MEM_OBJECT_HOST));
     q.finish();
 
     if (!is_sat) {
@@ -243,7 +247,7 @@ void Solver::printSummary() {
     cout << graph.total_occurrences << " total occurrences." << endl;
     cout << graph.primary_inputs.size() << " primary inputs read." << endl;
     cout << graph.primary_outputs.size() << " primary outputs read." << endl;
-    const vector<uint64_t> metrics = {conflict_count, decision_count, propagation_count, gate_imply_count, clause_imply_count, resolve_gate_count, resolve_forgot_count, resolve_clause_count, pop_unstamped_count, pick_branching_count, cancel_until_count, reduce_clauses_count, gate_implication_count, clause_implication_count};
+    const vector<uint64_t> metrics = {conflict_count, decision_count, propagation_count, burst_imply_count, gate_imply_count, clause_imply_count, resolve_gate_count, resolve_forgot_count, resolve_clause_count, pop_unstamped_count, pick_branching_count, cancel_until_count, reduce_clauses_count, gate_implication_count, clause_implication_count};
     for (int i = 0; i < metrics.size(); i++) {
         cout << metrics[i] << " " << metric_descriptions[i] << "." << endl;
     }
@@ -275,7 +279,7 @@ void Solver::logSummary(string log_file_path) {
     log << graph.total_occurrences << ",";
     log << graph.primary_inputs.size() << ",";
     log << graph.primary_outputs.size() << ",";
-    const vector<uint64_t> metrics = {conflict_count, decision_count, propagation_count, gate_imply_count, clause_imply_count, resolve_gate_count, resolve_forgot_count, resolve_clause_count, pop_unstamped_count, pick_branching_count, cancel_until_count, reduce_clauses_count, gate_implication_count, clause_implication_count};
+    const vector<uint64_t> metrics = {conflict_count, decision_count, propagation_count, burst_imply_count, gate_imply_count, clause_imply_count, resolve_gate_count, resolve_forgot_count, resolve_clause_count, pop_unstamped_count, pick_branching_count, cancel_until_count, reduce_clauses_count, gate_implication_count, clause_implication_count};
     for (int i = 0; i < metrics.size(); i++) {
         log << metrics[i] << ",";
     }

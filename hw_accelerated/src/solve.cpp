@@ -6,6 +6,8 @@
 #include "parameters.hpp"
 #include "test.hpp"
 
+using namespace std;
+
 void printWatchLists(Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_GATES], const uint32_t num_gates);
 void printTrailSection(const int32_t start, const int32_t end, const Assignment trail[MAX_GATES], const uint32_t level_assigned[MAX_GATES], const NodeID antecedent[MAX_GATES]);
 void printTrail(const Assignment trail[MAX_GATES], const int32_t trail_end, const uint32_t level_assigned[MAX_GATES], const NodeID antecedent[MAX_GATES]);
@@ -155,7 +157,7 @@ void AttachClause(Clause& learnt_clause, const ClauseID learnt_clause_id, Watche
     clause_activity[learnt_clause_id] = 0;
 }
 
-void Propagate(const Gate gates[MAX_GATES], const TruthTable truth_tables[MAX_GATES], const OccurrenceIndex occurrence_header[MAX_GATES + 1], const GateID occurrence_gids[MAX_OCCURRENCES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_GATES], bool locked[MAX_LEARNED_CLAUSES], PinValue assigns[ASSIGN_CLONES][MAX_GATES], Assignment trail[MAX_GATES], int32_t& trail_end, int32_t& q_head, uint32_t level_assigned[MAX_GATES], NodeID antecedent[MAX_GATES], uint32_t location[MAX_GATES], const uint32_t decision_level, NodeID& conflict, uint64_t& propagation_count, uint64_t& gate_imply_count, uint64_t& clause_imply_count, uint64_t& gate_implication_count, uint64_t& clause_implication_count) {
+void Propagate(const Gate gates[MAX_GATES], const TruthTable truth_tables[MAX_GATES], const OccurrenceIndex occurrence_header[MAX_GATES + 1], const GateID occurrence_gids[MAX_OCCURRENCES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_GATES], bool locked[MAX_LEARNED_CLAUSES], PinValue assigns[ASSIGN_CLONES][MAX_GATES], Assignment trail[MAX_GATES], int32_t& trail_end, int32_t& q_head, uint32_t level_assigned[MAX_GATES], NodeID antecedent[MAX_GATES], uint32_t location[MAX_GATES], const uint32_t decision_level, NodeID& conflict, uint64_t& propagation_count, uint64_t& burst_imply_count, uint64_t& gate_imply_count, uint64_t& clause_imply_count, uint64_t& gate_implication_count, uint64_t& clause_implication_count) {
 #pragma HLS INLINE
     bool conflict_occurred = false;
 propagate_loop:
@@ -163,45 +165,88 @@ propagate_loop:
         const Assignment pa = trail[q_head++];
         propagation_count++;
 
-        const GateID ante = antecedent[pa.gate_id];
-
         // Loop through related gates
+        const OccurrenceIndex low = occurrence_header[pa.gate_id];
+        const OccurrenceIndex high = occurrence_header[pa.gate_id + 1];
+        ImplyResult imply_results[IMPLY_BURST_SIZE];
+#pragma HLS array_partition variable = imply_results complete // not required - small array is automatically partitioned
     occurrence_loop:
-        for (OccurrenceIndex i = occurrence_header[pa.gate_id]; i < occurrence_header[pa.gate_id + 1]; i++) {
-            gate_imply_count++;
-            const GateID gid = occurrence_gids[i];
-            const Gate g = gates[gid];
+        for (OccurrenceIndex base_index = low; base_index < high; base_index += IMPLY_BURST_SIZE) {
+            ImplyBurstIndex burst_size = (base_index + IMPLY_BURST_SIZE > high) ? ImplyBurstIndex(high - base_index) : ImplyBurstIndex(IMPLY_BURST_SIZE);
+            burst_imply_count++;
+            gate_imply_count += burst_size;
+        burst_imply:
+            for (ImplyBurstIndex b = 0; b < burst_size; b++) {
+#pragma HLS loop_tripcount min = 1 max = IMPLY_BURST_SIZE
+                const GateID gid = occurrence_gids[base_index + b];
+                const Gate g = gates[gid];
+#pragma HLS array_partition variable = g.edges complete
 
-            // Collect assigns for g
-            Pins initial_pins;
-            CollectGateAssigns(assigns, g.edges, initial_pins);
+                imply_results[b].gate_id = gid;
+                imply_results[b].assignment = {gate_id::kNoConnect, pin_value::kDisconnect};  // reset
 
-            // Imply
-            Pins implied_pins;
-            bool imply_conflict;
-            imply(initial_pins, truth_tables[gid], implied_pins, imply_conflict);
+                // Collect assigns for g
+                Pins initial_pins;
+                CollectGateAssigns(assigns, g.edges, initial_pins);
 
-            // cout << "Imply " << gid.to_string(10) << ": " << initial_pins.to_string(2) << " -> " << implied_pins.to_string(2) << " with tt = " << truth_tables[gid].to_string(16) << endl;
+                // Imply
+                Pins implied_pins;
+                bool imply_conflict;
+                imply(initial_pins, truth_tables[gid], implied_pins, imply_conflict);
 
-            if (imply_conflict) {
-                // cout << "Imply conflict" << endl;
-                conflict = (node_type::kGate, ap_uint<NODE_ID_BITS - 1>(gid));
-                conflict_occurred = true;
-                break;
-            }
+                imply_results[b].imply_conflict = imply_conflict;
 
-        enqueue_first_implication:
-            for (Offset o = 0; o < PINS_PER_GATE; o++) {
-                if (pin_value::isAssigned(implied_pins(2 * o + 1, 2 * o)) && (initial_pins(2 * o + 1, 2 * o) != implied_pins(2 * o + 1, 2 * o))) {
-                    // Enqueue
-                    const Assignment enqueue_assignment = {g.edges[o], implied_pins(2 * o + 1, 2 * o)};
-                    const NodeID enqueue_reason = (node_type::kGate, gid);
-                    Enqueue(enqueue_assignment, enqueue_reason, assigns, antecedent, level_assigned, location, decision_level, locked, trail, trail_end);
-                    gate_implication_count++;
-                    break;
+            store_first_implication:
+                for (Offset o = 0; o < PINS_PER_GATE; o++) {
+                    if (pin_value::isAssigned(implied_pins(2 * o + 1, 2 * o)) && (initial_pins(2 * o + 1, 2 * o) != implied_pins(2 * o + 1, 2 * o))) {
+                        imply_results[b].assignment = {g.edges[o], implied_pins(2 * o + 1, 2 * o)};
+                        gate_implication_count++;
+                        break;
+                    }
                 }
             }
+
+            // cout << "Synchonizing\n";
+            // for(int b = 0; b < burst_size; b++) {
+            //     cout << imply_results[b].to_string() << endl;
+            // }
+
+        synchronization_barrier:
+            for (ImplyBurstIndex b = 0; b < burst_size; b++) {
+#pragma HLS loop_tripcount min = 1 max = IMPLY_BURST_SIZE
+                if (imply_results[b].imply_conflict) {
+                    conflict = (node_type::kGate, ap_uint<NODE_ID_BITS - 1>(imply_results[b].gate_id));
+                    conflict_occurred = true;
+                    goto end_of_barrier;
+                }
+                if (imply_results[b].assignment.gate_id != gate_id::kNoConnect) {
+                    // Check for conflicts or duplicates with previous occurrences
+                synchronization_check:
+                    for (int previous_b = 0; previous_b < IMPLY_BURST_SIZE - 1; previous_b++) {
+#pragma HLS unroll complete // By having constant loop bounds + variable internal check, we can completely unroll this
+                        if(previous_b >= b) {
+                            break;
+                        }
+                        if (imply_results[b].assignment.gate_id == imply_results[previous_b].assignment.gate_id) {
+                            if (imply_results[b].assignment.value != imply_results[previous_b].assignment.value) {
+                                conflict = (node_type::kGate, ap_uint<NODE_ID_BITS - 1>(imply_results[b].gate_id));
+                                conflict_occurred = true;
+                            }
+                            goto end_of_barrier;
+                        }
+                    }
+                    const Assignment enqueue_assignment = imply_results[b].assignment;
+                    const NodeID enqueue_reason = (node_type::kGate, imply_results[b].gate_id);
+                    Enqueue(enqueue_assignment, enqueue_reason, assigns, antecedent, level_assigned, location, decision_level, locked, trail, trail_end);
+                }
+            }
+
+        end_of_barrier:
+            if (conflict_occurred) {
+                break;
+            }
         }
+
         if (conflict_occurred) {
             break;
         }
@@ -491,11 +536,12 @@ StoreTrail_loop:
     }
 }
 
-void StoreMetrics(const bool is_sat, bool* g_is_sat, const uint32_t conflict_count, uint32_t* g_conflict_count, const uint32_t decision_count, uint32_t* g_decision_count, const uint64_t propagation_count, uint64_t* g_propagation_count, const uint64_t gate_imply_count, uint64_t* g_gate_imply_count, const uint64_t clause_imply_count, uint64_t* g_clause_imply_count, uint32_t const resolve_gate_count, uint32_t* const g_resolve_gate_count, uint32_t const resolve_forgot_count, uint32_t* const g_resolve_forgot_count, uint32_t const resolve_clause_count, uint32_t* const g_resolve_clause_count, uint64_t const pop_unstamped_count, uint64_t* const g_pop_unstamped_count, uint64_t const pick_branching_count, uint64_t* const g_pick_branching_count, uint64_t const cancel_until_count, uint64_t* const g_cancel_until_count, const uint32_t reduce_clauses_count, uint32_t* g_reduce_clauses_count, const uint64_t gate_implication_count, uint64_t* g_gate_implication_count, const uint64_t clause_implication_count, uint64_t* g_clause_implication_count) {
+void StoreMetrics(const bool is_sat, bool* g_is_sat, const uint32_t conflict_count, uint32_t* g_conflict_count, const uint32_t decision_count, uint32_t* g_decision_count, const uint64_t propagation_count, uint64_t* g_propagation_count, const uint64_t burst_imply_count, uint64_t* g_burst_imply_count, const uint64_t gate_imply_count, uint64_t* g_gate_imply_count, const uint64_t clause_imply_count, uint64_t* g_clause_imply_count, uint32_t const resolve_gate_count, uint32_t* const g_resolve_gate_count, uint32_t const resolve_forgot_count, uint32_t* const g_resolve_forgot_count, uint32_t const resolve_clause_count, uint32_t* const g_resolve_clause_count, uint64_t const pop_unstamped_count, uint64_t* const g_pop_unstamped_count, uint64_t const pick_branching_count, uint64_t* const g_pick_branching_count, uint64_t const cancel_until_count, uint64_t* const g_cancel_until_count, const uint32_t reduce_clauses_count, uint32_t* g_reduce_clauses_count, const uint64_t gate_implication_count, uint64_t* g_gate_implication_count, const uint64_t clause_implication_count, uint64_t* g_clause_implication_count) {
     (*g_is_sat) = is_sat;
     (*g_conflict_count) = conflict_count;
     (*g_decision_count) = decision_count;
     (*g_propagation_count) = propagation_count;
+    (*g_burst_imply_count) = burst_imply_count;
     (*g_gate_imply_count) = gate_imply_count;
     (*g_clause_imply_count) = clause_imply_count;
     (*g_resolve_gate_count) = resolve_gate_count;
@@ -511,7 +557,7 @@ void StoreMetrics(const bool is_sat, bool* g_is_sat, const uint32_t conflict_cou
 
 extern "C" {
 
-void solve(const Gate g_gates[MAX_GATES], const PinValue g_initial_assigns[MAX_GATES], const TruthTable g_truth_tables[MAX_GATES], const OccurrenceIndex g_occurrence_header[MAX_GATES + 1], const GateID g_occurrence_gids[MAX_OCCURRENCES], const uint32_t num_gates, const uint32_t gate_to_satisfy, Assignment g_trail[MAX_GATES], bool* g_is_sat, uint32_t* const g_conflict_count, uint32_t* const g_decision_count, uint64_t* const g_propagation_count, uint64_t* const g_gate_imply_count, uint64_t* const g_clause_imply_count, uint32_t* const g_resolve_gate_count, uint32_t* const g_resolve_forgot_count, uint32_t* const g_resolve_clause_count, uint64_t* const g_pop_unstamped_count, uint64_t* const g_pick_branching_count, uint64_t* const g_cancel_until_count, uint32_t* const g_reduce_clauses_count, uint64_t* const g_gate_implication_count, uint64_t* const g_clause_implication_count) {
+void solve(const Gate g_gates[MAX_GATES], const PinValue g_initial_assigns[MAX_GATES], const TruthTable g_truth_tables[MAX_GATES], const OccurrenceIndex g_occurrence_header[MAX_GATES + 1], const GateID g_occurrence_gids[MAX_OCCURRENCES], const uint32_t num_gates, const uint32_t gate_to_satisfy, Assignment g_trail[MAX_GATES], bool* g_is_sat, uint32_t* const g_conflict_count, uint32_t* const g_decision_count, uint64_t* const g_propagation_count, uint64_t* const g_burst_imply_count, uint64_t* const g_gate_imply_count, uint64_t* const g_clause_imply_count, uint32_t* const g_resolve_gate_count, uint32_t* const g_resolve_forgot_count, uint32_t* const g_resolve_clause_count, uint64_t* const g_pop_unstamped_count, uint64_t* const g_pick_branching_count, uint64_t* const g_cancel_until_count, uint32_t* const g_reduce_clauses_count, uint64_t* const g_gate_implication_count, uint64_t* const g_clause_implication_count) {
     static PinValue assigns[ASSIGN_CLONES][MAX_GATES];
 #pragma HLS array_partition variable = assigns dim = 1 complete
     static uint32_t level_assigned[MAX_GATES];
@@ -569,6 +615,7 @@ initialize_RAM_occurrences:
     uint32_t conflict_count = (*g_conflict_count);
     uint32_t decision_count = (*g_decision_count);
     uint64_t propagation_count = (*g_propagation_count);
+    uint64_t burst_imply_count = (*g_burst_imply_count);
     uint64_t gate_imply_count = (*g_gate_imply_count);
     uint64_t clause_imply_count = (*g_clause_imply_count);
     uint32_t resolve_gate_count = (*g_resolve_gate_count);
@@ -588,7 +635,7 @@ initialize_RAM_occurrences:
 solve_loop:
     while (true) {
         NodeID conflict = node_id::kDecision;
-        Propagate(gates, truth_tables, occurrence_header, occurrence_gids, watcher_header, clauses, locked, assigns, trail, trail_end, q_head, level_assigned, antecedent, location, decision_level, conflict, propagation_count, gate_imply_count, clause_imply_count, gate_implication_count, clause_implication_count);
+        Propagate(gates, truth_tables, occurrence_header, occurrence_gids, watcher_header, clauses, locked, assigns, trail, trail_end, q_head, level_assigned, antecedent, location, decision_level, conflict, propagation_count, burst_imply_count, gate_imply_count, clause_imply_count, gate_implication_count, clause_implication_count);
         if (conflict != node_id::kDecision) {
             conflict_count++;
             // cout << "Conflict occurred @ " << decision_level << endl;
@@ -645,7 +692,7 @@ solve_loop:
     if (is_sat) {
         StoreTrail(trail, g_trail);
     }
-    StoreMetrics(is_sat, g_is_sat, conflict_count, g_conflict_count, decision_count, g_decision_count, propagation_count, g_propagation_count, gate_imply_count, g_gate_imply_count, clause_imply_count, g_clause_imply_count, resolve_gate_count, g_resolve_gate_count, resolve_forgot_count, g_resolve_forgot_count, resolve_clause_count, g_resolve_clause_count, pop_unstamped_count, g_pop_unstamped_count, pick_branching_count, g_pick_branching_count, cancel_until_count, g_cancel_until_count, reduce_clauses_count, g_reduce_clauses_count, gate_implication_count, g_gate_implication_count, clause_implication_count, g_clause_implication_count);
+    StoreMetrics(is_sat, g_is_sat, conflict_count, g_conflict_count, decision_count, g_decision_count, propagation_count, g_propagation_count, burst_imply_count, g_burst_imply_count, gate_imply_count, g_gate_imply_count, clause_imply_count, g_clause_imply_count, resolve_gate_count, g_resolve_gate_count, resolve_forgot_count, g_resolve_forgot_count, resolve_clause_count, g_resolve_clause_count, pop_unstamped_count, g_pop_unstamped_count, pick_branching_count, g_pick_branching_count, cancel_until_count, g_cancel_until_count, reduce_clauses_count, g_reduce_clauses_count, gate_implication_count, g_gate_implication_count, clause_implication_count, g_clause_implication_count);
     // printClauses(clauses, assigns, 128);
     // printWatchLists(watcher_header, clauses, 128);
 }

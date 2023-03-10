@@ -12,6 +12,7 @@ typedef ap_uint<TRUTH_TABLE_BITS> TruthTable;
 typedef ap_uint<GATE_ID_BITS> GateID;
 typedef ap_uint<OFFSET_BITS> Offset;
 typedef ap_uint<OCCURRENCE_BITS> OccurrenceIndex;
+typedef ap_uint<IMPLY_BURST_INDEX_BITS> ImplyBurstIndex;
 typedef ap_uint<2 * PINS_PER_GATE> Pins;
 typedef ap_uint<2> PinValue;
 typedef ap_uint<2> LiteralValuation;
@@ -177,6 +178,17 @@ struct Assignment {
     PinValue value;
     string to_string() const {
         return string() + gate_id.to_string(10) + " = " + pin_value::to_string(value);
+    }
+};
+
+struct ImplyResult {
+    GateID gate_id;
+    Assignment assignment;
+    bool imply_conflict;
+    string to_string() const {
+        string ret = imply_conflict ? "IMPLY CONFLICT - " : "NO CONFLICT - ";
+        ret += string() + "occurrence: " + gate_id.to_string(10) + ". generated assignment: " + assignment.to_string() + ".";
+        return ret;
     }
 };
 
