@@ -140,7 +140,7 @@ propagate_loop:
         const OccurrenceIndex low = occurrence_header[pa.gate_id];
         const OccurrenceIndex high = occurrence_header[pa.gate_id + 1];
         ImplyResult imply_results[IMPLY_BURST_SIZE];
-#pragma HLS array_partition variable = imply_results complete // not required - small array is automatically partitioned
+#pragma HLS array_partition variable = imply_results complete  // not required - small array is automatically partitioned
     occurrence_loop:
         for (OccurrenceIndex base_index = low; base_index < high; base_index += IMPLY_BURST_SIZE) {
             ImplyBurstIndex burst_size = (base_index + IMPLY_BURST_SIZE > high) ? ImplyBurstIndex(high - base_index) : ImplyBurstIndex(IMPLY_BURST_SIZE);
@@ -177,11 +177,6 @@ propagate_loop:
                 }
             }
 
-            // cout << "Synchonizing\n";
-            // for(int b = 0; b < burst_size; b++) {
-            //     cout << imply_results[b].to_string() << endl;
-            // }
-
         synchronization_barrier:
             for (ImplyBurstIndex b = 0; b < burst_size; b++) {
 #pragma HLS loop_tripcount min = 1 max = IMPLY_BURST_SIZE
@@ -194,8 +189,8 @@ propagate_loop:
                     // Check for conflicts or duplicates with previous occurrences
                 synchronization_check:
                     for (int previous_b = 0; previous_b < IMPLY_BURST_SIZE - 1; previous_b++) {
-#pragma HLS unroll complete // By having constant loop bounds + variable internal check, we can completely unroll this
-                        if(previous_b >= b) {
+#pragma HLS unroll complete  // By having constant loop bounds + variable internal check, we can completely unroll this
+                        if (previous_b >= b) {
                             break;
                         }
                         if (imply_results[b].assignment.gate_id == imply_results[previous_b].assignment.gate_id) {
@@ -222,6 +217,7 @@ propagate_loop:
             break;
         }
 
+#ifdef USE_CL
         // Loop through watched clauses
         const ap_uint<1> polarity = pin_value::to_polarity(pa.value);
         const Literal falsified_literal = (pa.gate_id, ~polarity);
@@ -309,6 +305,7 @@ propagate_loop:
         if (conflict_occurred) {
             break;
         }
+#endif
     }
 }
 #ifdef USE_VSIDS
@@ -374,7 +371,9 @@ ConflictAnalysis_loop:
                     stamps[edge] = conflict_id;
                 }
             }
-        } else {
+        }
+#ifdef USE_CL
+        else {
             assert(node_to_resolve[NodeID::width - 1] == node_type::kClause);
             resolve_clause_count++;
             ClauseID cid = node_to_resolve(ClauseID::width - 1, 0);
@@ -410,6 +409,7 @@ ConflictAnalysis_loop:
                 }
             }
         }
+#endif
         t--;  // t was at trail_end or the already resolved assignment
     trail_stamp_search:
         while (stamps[trail[t].gate_id] != conflict_id) {
@@ -432,7 +432,9 @@ ConflictAnalysis_loop:
 
     if (keep_clause && lc_end == 1) {
         learnt_node_id = node_id::kDecision;
-    } else if (keep_clause) {
+    }
+#ifdef USE_CL
+    else if (keep_clause) {
         // assert(!clause_allocator.isFull());
         if (!clause_allocator.isFull()) {
             ClauseID learnt_clause_id = clause_allocator.allocate();
@@ -446,7 +448,9 @@ ConflictAnalysis_loop:
 
             AttachClause(learnt_clause, learnt_clause_id, watcher_header, clauses, clause_activity);
         }
-    } else {
+    }
+#endif
+    else {
         learnt_node_id = node_id::kForgot;
     }
     conflict_id++;
