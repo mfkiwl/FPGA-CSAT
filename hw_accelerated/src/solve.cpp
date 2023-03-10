@@ -26,12 +26,14 @@ enqueue_clone_assigns:
     }
     level_assigned[a.gate_id] = decision_level;
     antecedent[a.gate_id] = reason;
+#ifdef USE_CL
     if (reason[NodeID::width - 1] == node_type::kClause) {
         const ClauseID cid = reason(ClauseID::width - 1, 0);
         if (cid < MAX_LEARNED_CLAUSES) {
             locked[cid] = true;
         }
     }
+#endif
     trail[trail_end] = a;
     trail_end++;
 }
@@ -46,6 +48,7 @@ cancel_clone_assigns:
     }
     level_assigned[gid] = UNASSIGNED;
 
+#ifdef USE_CL
     const NodeID reason = antecedent[gid];
     if (reason[NodeID::width - 1] == node_type::kClause) {
         const ClauseID cid = reason(ClauseID::width - 1, 0);
@@ -53,6 +56,7 @@ cancel_clone_assigns:
             locked[cid] = false;
         }
     }
+#endif
 }
 
 void CancelUntil(int32_t backtrack_step, const Assignment trail[MAX_GATES], int32_t& trail_end, PinValue assigns[ASSIGN_CLONES][MAX_GATES], uint32_t level_assigned[MAX_GATES], const NodeID antecedent[MAX_GATES], bool locked[MAX_LEARNED_CLAUSES], uint64_t& cancel_until_count) {
@@ -613,10 +617,12 @@ solve_loop:
         if (conflict != node_id::kDecision) {
             conflict_count++;
             // cout << "Conflict occurred @ " << decision_level << endl;
+#ifdef USE_CL
             if (clause_allocator.isFull()) {
                 reduce_clauses_count++;
                 ReduceClauses(locked, clause_activity, clause_allocator, watcher_header, clauses);
             }
+#endif
             if (decision_level == 0) {
                 cout << "Kernel: UNSAT" << endl;
                 is_sat = false;
