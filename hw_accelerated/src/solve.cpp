@@ -72,13 +72,6 @@ CancelUntil_loop:
     trail_end = backtrack_step;
 }
 
-void TrailPop(const Assignment trail[MAX_GATES], int32_t& trail_end, PinValue assigns[ASSIGN_CLONES][MAX_GATES], uint32_t level_assigned[MAX_GATES], const NodeID antecedent[MAX_GATES], bool locked[MAX_GATES]) {
-#pragma HLS INLINE
-    // assert(trail_end > 0);
-    trail_end--;
-    Cancel(trail[trail_end].gate_id, assigns, level_assigned, antecedent, locked);
-}
-
 void CollectGateAssigns(const PinValue assigns[ASSIGN_CLONES][MAX_GATES], const GateID edges[PINS_PER_GATE], Pins& pins) {
 #pragma HLS INLINE
 CollectGateAssigns_loop:
@@ -332,7 +325,6 @@ bool ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watch
     bool ret = true;
     bool keep_clause = true;
 
-    Assignment a;
 ConflictAnalysis_loop:
     do {
         // assert(node_to_resolve != node_id::kDecision);  // otherwise we would have found UIP
@@ -415,20 +407,23 @@ ConflictAnalysis_loop:
         }
 #endif
         t--;  // t was at trail_end or the already resolved assignment
+        GateID trail_gid = trail[t].gate_id;
     trail_stamp_search:
-        while (stamps[trail[t].gate_id] != conflict_id) {
-            assert(antecedent[trail[t].gate_id] != node_id::kDecision);  // There is no way we should pop through a decision level during Resolution
+        while (stamps[trail_gid] != conflict_id) {
+            // assert(antecedent[trail[t].gate_id] != node_id::kDecision);  // There is no way we should pop through a decision level during Resolution
             pop_unstamped_count++;
-            TrailPop(trail, trail_end, assigns, level_assigned, antecedent, locked);
+            Cancel(trail_gid, assigns, level_assigned, antecedent, locked);
             t--;
+            trail_gid = trail[t].gate_id;
         }
-        a = trail[t];
-        node_to_resolve = antecedent[a.gate_id];
-        TrailPop(trail, trail_end, assigns, level_assigned, antecedent, locked);
+        node_to_resolve = antecedent[trail_gid];
+        Cancel(trail_gid, assigns, level_assigned, antecedent, locked);
         needs_resolution_count--;
     } while (needs_resolution_count > 0);
+    trail_end = t;
 
     // Get asserting_assignment
+    const Assignment a = trail[t];
     const PinValue asserting_value = pin_value::inverse(a.value);
     Literal asserting_literal;
     asserting_literal = (a.gate_id, pin_value::to_polarity(asserting_value));
