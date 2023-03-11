@@ -303,20 +303,19 @@ class VSIDS {
     void bump(GateID gid) {
         float temp = activity[gid] + var_inc;
         activity[gid] = temp;
-        max_activity = (temp > max_activity) ? temp : max_activity;
     }
 
     bool rescaleNeeded() {
-        return bool((FLT_MAX - var_inc) <= max_activity);
+        return bool(var_inc >= RESCORE_TRIP_VALUE);
     }
 
     void rescale() {
     rescale_VSIDS:
         for (GateID i = 0; i < m_num_gates; i++) {
 #pragma HLS loop_tripcount max = MAX_GATES
-            activity[i] *= FLT_MIN;
+            activity[i] *= RESCORE_FACTOR;
         }
-        var_inc *= FLT_MIN;
+        var_inc *= RESCORE_FACTOR;
     }
 
     bool pickBranching(const PinValue assigns[MAX_GATES], Assignment& branching_assignment, uint64_t& pick_branching_count) {
@@ -351,13 +350,11 @@ class VSIDS {
             cout << i << " : " << activity[i] << " ";
         }
         cout << "\nvar_inc " << var_inc << "\n";
-        cout << "max_activity = " << max_activity << endl;
     }
 
     uint32_t m_num_gates;
     float var_inc;
     float activity[MAX_GATES];
-    float max_activity;
 };
 
 class ClauseAllocator {
