@@ -288,7 +288,7 @@ class VSIDS {
 
     void initialize(const uint32_t num_gates) {
         m_num_gates = num_gates;
-        var_inc = FLT_MIN;
+        var_inc = FLT_MAX / RESCORE_FACTOR;
     initialize_VSIDS:
         for (GateID i = 0; i < num_gates; i++) {
 #pragma HLS loop_tripcount max = MAX_GATES
