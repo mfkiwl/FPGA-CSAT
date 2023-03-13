@@ -574,6 +574,7 @@ initialize_RAM_occurrences:
     int32_t q_head = 0;
 #ifdef USE_VSIDS
     static VSIDS strategy;
+#pragma HLS array_partition variable=strategy.activity cyclic factor=VSIDS_ACTIVITY_PARTITION_FACTOR
 #else
     static VMTF strategy;
 #pragma HLS bind_storage variable = strategy.links type = RAM_T2P

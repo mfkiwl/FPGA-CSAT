@@ -35,6 +35,8 @@ constexpr unsigned int OFFSET_BITS = ceillog2(PINS_PER_GATE);
 constexpr unsigned int OCCURRENCE_BITS = ceillog2(MAX_OCCURRENCES + IMPLY_BURST_SIZE);  // + IMPLY_BURST_SIZE to prevent loop index overflow
 
 #define USE_VSIDS
+constexpr unsigned int VSIDS_ACTIVITY_PARTITION_FACTOR = 16;
+constexpr unsigned int VSIDS_COMPARE_STAGES = ceillog2(VSIDS_ACTIVITY_PARTITION_FACTOR);
 constexpr float VAR_INC_INCREASE = 1.052631617F;                                        // 1 / .95 from MiniSAT var_decay
 constexpr float RESCORE_TRIP_VALUE = (FLT_MAX / ((-1 / (1 - VAR_INC_INCREASE)))) * .9;  // 10% margin to ensure all acivity scores stay below FLT_MAX
 constexpr float RESCORE_FACTOR = FLT_MIN;                                               // maximal rescoring in a single pass

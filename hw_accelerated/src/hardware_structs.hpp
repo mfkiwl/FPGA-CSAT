@@ -313,6 +313,7 @@ class VSIDS {
     rescale_VSIDS:
         for (GateID i = 0; i < m_num_gates; i++) {
 #pragma HLS loop_tripcount max = MAX_GATES
+#pragma HLS unroll factor = VSIDS_ACTIVITY_PARTITION_FACTOR
             activity[i] *= RESCORE_FACTOR;
         }
         var_inc *= RESCORE_FACTOR;
@@ -320,18 +321,60 @@ class VSIDS {
 
     bool pickBranching(const PinValue assigns[MAX_GATES], Assignment& branching_assignment, uint64_t& pick_branching_count) {
 #pragma HLS INLINE
+//#pragma HLS array_partition variable = assigns cyclic factor = VSIDS_ACTIVITY_PARTITION_FACTOR
+#pragma HLS bind_storage variable=assigns type=RAM_1WnR
         bool found = false;
         float candidate_score = -1;
 
+        struct CompareEntry {
+            float activity_score;
+            GateID gate_id;
+            PinValue pin_value;
+            CompareEntry() : activity_score(-1), gate_id(gate_id::kNoConnect), pin_value(pin_value::kDisconnect) {}
+            CompareEntry(float activity_score, GateID gate_id, PinValue pin_value) : activity_score(activity_score), gate_id(gate_id), pin_value(pin_value) {}
+            bool operator >=(const CompareEntry& other) const {
+                return activity_score >= other.activity_score;
+            }
+            string to_string() const {
+                return string() + "activity_score = " + std::to_string(activity_score) + " gate_id = " + gate_id.to_string(10) + " pin_value = " + pin_value::to_string(pin_value);
+            }
+        };
+
+        CompareEntry stages[VSIDS_COMPARE_STAGES][VSIDS_ACTIVITY_PARTITION_FACTOR];
+#pragma HLS array_partition variable = stages complete
+
     pickBranching_VSIDS_loop:
-        for (GateID i = 0; i < m_num_gates; i++) {
-#pragma HLS loop_tripcount max = MAX_GATES
-#pragma HLS pipeline II = 2  // fcmp is a slow operation - this allows higher clock speed
-            pick_branching_count++;
-            if (pin_value::isUnknown(assigns[i]) && activity[i] > candidate_score) {
+        for (int base_index = 0; base_index < m_num_gates; base_index += VSIDS_ACTIVITY_PARTITION_FACTOR) {
+#pragma HLS loop_tripcount max = (MAX_GATES / VSIDS_ACTIVITY_PARTITION_FACTOR)
+        pick_branching_count++;
+        load_initial_stage:
+            for (int b = 0; b < VSIDS_ACTIVITY_PARTITION_FACTOR; b++) {
+#pragma HLS unroll
+                const uint32_t index = base_index + b;
+                if (index < m_num_gates && pin_value::isUnknown(assigns[index])) {
+                    stages[0][b] = {activity[index], index, assigns[index]};
+                } else {
+                    stages[0][b] = {-1, gate_id::kNoConnect, pin_value::kDisconnect};
+                }
+            }
+        compare_stages:
+            for (int stage = 1; stage < VSIDS_COMPARE_STAGES; stage++) {
+#pragma HLS unroll
+            compare_stage:
+                for (int j = 0; j < (VSIDS_ACTIVITY_PARTITION_FACTOR >> stage); j++) {
+#pragma HLS unroll
+                    if (stages[stage - 1][2 * j] >= stages[stage - 1][2 * j + 1]) {
+                        stages[stage][j] = stages[stage - 1][2 * j];
+                    } else {
+                        stages[stage][j] = stages[stage - 1][2 * j + 1];
+                    }
+                }
+            }
+            const CompareEntry champion = stages[VSIDS_COMPARE_STAGES - 1][0];
+            if (champion.activity_score > candidate_score) {
                 found = true;
-                branching_assignment = Assignment(i, pin_value::restorePhase(assigns[i]));
-                candidate_score = activity[i];
+                branching_assignment = Assignment(champion.gate_id, pin_value::restorePhase(champion.pin_value));
+                candidate_score = champion.activity_score;
             }
         }
         return found;

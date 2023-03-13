@@ -39,7 +39,7 @@ class Solver {
     alignas(4096) uint64_t gate_implication_count;
     alignas(4096) uint64_t clause_implication_count;
     const vector<string> metric_names = {"conflict_count", "decision_count", "propagation_count", "burst_imply_count", "gate_imply_count", "clause_imply_count", "resolve_gate_count", "resolve_forgot_count", "resolve_clause_count", "pop_unstamped_count", "pick_branching_count", "cancel_until_count", "reduce_clauses_count", "gate_implication_count", "clause_implication_count"};
-    const vector<string> metric_descriptions = {"conflicts occurred", "decisions occurred", "propagations occurred", "burst imply count", "gate imply calls", "clause imply calls", "gates resolved", "forgotten clauses resolved", "learned clauses resolved", "unstamped trail assignments popped during CA", "variables considered during decide", "assignments cancled during backtracking", "clauses DB reductions", "implications from gates", "implications from clauses"};
+    const vector<string> metric_descriptions = {"conflicts occurred", "decisions occurred", "propagations occurred", "burst imply count", "gate imply calls", "clause imply calls", "gates resolved", "forgotten clauses resolved", "learned clauses resolved", "unstamped trail assignments popped during CA", "pickBranching trips", "assignments cancled during backtracking", "clauses DB reductions", "implications from gates", "implications from clauses"};
 
     unordered_map<string, bool> satisfying_assignment;
     std::chrono::duration<double> duration;
