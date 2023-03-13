@@ -9,12 +9,12 @@
 using namespace std;
 
 void printWatchLists(Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_GATES], const uint32_t num_gates);
-void printTrailSection(const int32_t start, const int32_t end, const Assignment trail[MAX_GATES], const uint32_t level_assigned[MAX_GATES], const NodeID antecedent[MAX_GATES]);
-void printTrail(const Assignment trail[MAX_GATES], const int32_t trail_end, const uint32_t level_assigned[MAX_GATES], const NodeID antecedent[MAX_GATES]);
+void printTrailSection(const int32_t start, const int32_t end, const Assignment trail[MAX_GATES], const Level level_assigned[MAX_GATES], const NodeID antecedent[MAX_GATES]);
+void printTrail(const Assignment trail[MAX_GATES], const int32_t trail_end, const Level level_assigned[MAX_GATES], const NodeID antecedent[MAX_GATES]);
 void printClauseEvaluation(const PinValue assigns[ASSIGN_CLONES][MAX_GATES], const Clause& clause);
 void printClauses(const Clause clauses[MAX_LEARNED_CLAUSES], const PinValue assigns[ASSIGN_CLONES][MAX_GATES], const int32_t clauses_end);
 
-void Enqueue(const Assignment& a, const NodeID& reason, PinValue assigns[ASSIGN_CLONES][MAX_GATES], NodeID antecedent[MAX_GATES], uint32_t level_assigned[MAX_GATES], const uint32_t decision_level, bool locked[MAX_LEARNED_CLAUSES], Assignment trail[MAX_GATES], int32_t& trail_end) {
+void Enqueue(const Assignment& a, const NodeID& reason, PinValue assigns[ASSIGN_CLONES][MAX_GATES], NodeID antecedent[MAX_GATES], Level level_assigned[MAX_GATES], const Level decision_level, bool locked[MAX_LEARNED_CLAUSES], Assignment trail[MAX_GATES], int32_t& trail_end) {
 #pragma HLS INLINE
     // cout << "Enqueue " << a.gate_id.to_string(10) << " = " << a.value.to_string(10) << " @ " << decision_level << endl;
     // assert(a.gate_id != gate_id::kNoConnect);
@@ -38,7 +38,7 @@ enqueue_clone_assigns:
     trail_end++;
 }
 
-void Cancel(const GateID gid, PinValue assigns[ASSIGN_CLONES][MAX_GATES], uint32_t level_assigned[MAX_GATES], const NodeID antecedent[MAX_GATES], bool locked[MAX_LEARNED_CLAUSES]) {
+void Cancel(const GateID gid, PinValue assigns[ASSIGN_CLONES][MAX_GATES], Level level_assigned[MAX_GATES], const NodeID antecedent[MAX_GATES], bool locked[MAX_LEARNED_CLAUSES]) {
 #pragma HLS INLINE
     const PinValue saved_val = pin_value::savePhase(assigns[0][gid]);
 cancel_clone_assigns:
@@ -46,7 +46,7 @@ cancel_clone_assigns:
 #pragma HLS UNROLL
         assigns[ac][gid] = saved_val;
     }
-    level_assigned[gid] = UNASSIGNED;
+    level_assigned[gid] = level::kUnassigned;
 
 #ifdef USE_CL
     const NodeID reason = antecedent[gid];
@@ -59,7 +59,7 @@ cancel_clone_assigns:
 #endif
 }
 
-void CancelUntil(int32_t backtrack_step, const Assignment trail[MAX_GATES], int32_t& trail_end, PinValue assigns[ASSIGN_CLONES][MAX_GATES], uint32_t level_assigned[MAX_GATES], const NodeID antecedent[MAX_GATES], bool locked[MAX_LEARNED_CLAUSES], uint64_t& cancel_until_count) {
+void CancelUntil(int32_t backtrack_step, const Assignment trail[MAX_GATES], int32_t& trail_end, PinValue assigns[ASSIGN_CLONES][MAX_GATES], Level level_assigned[MAX_GATES], const NodeID antecedent[MAX_GATES], bool locked[MAX_LEARNED_CLAUSES], uint64_t& cancel_until_count) {
 #pragma HLS INLINE
     // assert(backtrack_step <= trail_end);
     // assert(backtrack_step > 0);
@@ -125,7 +125,7 @@ void AttachClause(Clause& learnt_clause, const ClauseID learnt_clause_id, Watche
     clause_activity[learnt_clause_id] = 0;
 }
 
-void Propagate(const Gate gates[MAX_GATES], const TruthTable truth_tables[MAX_GATES], const OccurrenceIndex occurrence_header[MAX_GATES + 1], const GateID occurrence_gids[MAX_OCCURRENCES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_GATES], bool locked[MAX_LEARNED_CLAUSES], PinValue assigns[ASSIGN_CLONES][MAX_GATES], Assignment trail[MAX_GATES], int32_t& trail_end, int32_t& q_head, uint32_t level_assigned[MAX_GATES], NodeID antecedent[MAX_GATES], const uint32_t decision_level, NodeID& conflict, uint64_t& propagation_count, uint64_t& burst_imply_count, uint64_t& gate_imply_count, uint64_t& clause_imply_count, uint64_t& gate_implication_count, uint64_t& clause_implication_count) {
+void Propagate(const Gate gates[MAX_GATES], const TruthTable truth_tables[MAX_GATES], const OccurrenceIndex occurrence_header[MAX_GATES + 1], const GateID occurrence_gids[MAX_OCCURRENCES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_GATES], bool locked[MAX_LEARNED_CLAUSES], PinValue assigns[ASSIGN_CLONES][MAX_GATES], Assignment trail[MAX_GATES], int32_t& trail_end, int32_t& q_head, Level level_assigned[MAX_GATES], NodeID antecedent[MAX_GATES], const Level decision_level, NodeID& conflict, uint64_t& propagation_count, uint64_t& burst_imply_count, uint64_t& gate_imply_count, uint64_t& clause_imply_count, uint64_t& gate_implication_count, uint64_t& clause_implication_count) {
 #pragma HLS INLINE
     bool conflict_occurred = false;
 propagate_loop:
@@ -306,9 +306,9 @@ propagate_loop:
     }
 }
 #ifdef USE_VSIDS
-bool ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_LEARNED_CLAUSES], int32_t clause_activity[MAX_LEARNED_CLAUSES], ClauseAllocator& clause_allocator, PinValue assigns[ASSIGN_CLONES][MAX_GATES], bool locked[MAX_GATES], const Assignment trail[MAX_GATES], int32_t& trail_end, const uint32_t decision_level, const NodeID antecedent[MAX_GATES], uint32_t stamps[MAX_GATES], uint32_t level_assigned[MAX_GATES], VSIDS& strategy, uint32_t& backjump_level, Assignment& asserting_assignment, NodeID& learnt_node_id, uint32_t& resolve_forgot_count, uint32_t& resolve_gate_count, uint32_t& resolve_clause_count, uint64_t& pop_unstamped_count) {
+bool ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_LEARNED_CLAUSES], int32_t clause_activity[MAX_LEARNED_CLAUSES], ClauseAllocator& clause_allocator, PinValue assigns[ASSIGN_CLONES][MAX_GATES], bool locked[MAX_GATES], const Assignment trail[MAX_GATES], int32_t& trail_end, const Level decision_level, const NodeID antecedent[MAX_GATES], uint32_t stamps[MAX_GATES], Level level_assigned[MAX_GATES], VSIDS& strategy, uint32_t& backjump_level, Assignment& asserting_assignment, NodeID& learnt_node_id, uint32_t& resolve_forgot_count, uint32_t& resolve_gate_count, uint32_t& resolve_clause_count, uint64_t& pop_unstamped_count) {
 #else
-bool ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_LEARNED_CLAUSES], int32_t clause_activity[MAX_LEARNED_CLAUSES], ClauseAllocator& clause_allocator, PinValue assigns[ASSIGN_CLONES][MAX_GATES], bool locked[MAX_GATES], const Assignment trail[MAX_GATES], int32_t& trail_end, const uint32_t decision_level, const NodeID antecedent[MAX_GATES], uint32_t stamps[MAX_GATES], uint32_t level_assigned[MAX_GATES], VMTF& strategy, uint32_t& backjump_level, Assignment& asserting_assignment, NodeID& learnt_node_id, uint32_t& resolve_forgot_count, uint32_t& resolve_gate_count, uint32_t& resolve_clause_count, uint64_t& pop_unstamped_count) {
+bool ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_LEARNED_CLAUSES], int32_t clause_activity[MAX_LEARNED_CLAUSES], ClauseAllocator& clause_allocator, PinValue assigns[ASSIGN_CLONES][MAX_GATES], bool locked[MAX_GATES], const Assignment trail[MAX_GATES], int32_t& trail_end, const Level decision_level, const NodeID antecedent[MAX_GATES], uint32_t stamps[MAX_GATES], Level level_assigned[MAX_GATES], VMTF& strategy, uint32_t& backjump_level, Assignment& asserting_assignment, NodeID& learnt_node_id, uint32_t& resolve_forgot_count, uint32_t& resolve_gate_count, uint32_t& resolve_clause_count, uint64_t& pop_unstamped_count) {
 #endif
 #pragma HLS INLINE
     static uint16_t conflict_id = 0;
@@ -534,7 +534,7 @@ extern "C" {
 void solve(const Gate g_gates[MAX_GATES], const PinValue g_initial_assigns[MAX_GATES], const TruthTable g_truth_tables[MAX_GATES], const OccurrenceIndex g_occurrence_header[MAX_GATES + 1], const GateID g_occurrence_gids[MAX_OCCURRENCES], const uint32_t num_gates, const uint32_t gate_to_satisfy, Assignment g_trail[MAX_GATES], bool* g_is_sat, uint32_t* const g_conflict_count, uint32_t* const g_decision_count, uint64_t* const g_propagation_count, uint64_t* const g_burst_imply_count, uint64_t* const g_gate_imply_count, uint64_t* const g_clause_imply_count, uint32_t* const g_resolve_gate_count, uint32_t* const g_resolve_forgot_count, uint32_t* const g_resolve_clause_count, uint64_t* const g_pop_unstamped_count, uint64_t* const g_pick_branching_count, uint64_t* const g_cancel_until_count, uint32_t* const g_reduce_clauses_count, uint64_t* const g_gate_implication_count, uint64_t* const g_clause_implication_count) {
     static PinValue assigns[ASSIGN_CLONES][MAX_GATES];
 #pragma HLS array_partition variable = assigns dim = 1 complete
-    static uint32_t level_assigned[MAX_GATES];
+    static Level level_assigned[MAX_GATES];
     static NodeID antecedent[MAX_GATES];
     static uint32_t stamps[MAX_GATES];
     static Watcher watcher_header[2 * MAX_GATES];
@@ -549,7 +549,7 @@ initialize_RAM:
         for (unsigned int ac = 0; ac < ASSIGN_CLONES; ac++) {
             assigns[ac][i] = g_initial_assigns[i];
         }
-        level_assigned[i] = UNASSIGNED;
+        level_assigned[i] = level::kUnassigned;
         antecedent[i] = gate_id::kNoConnect;
         watcher_header[2 * i] = watcher::kInvalid;
         watcher_header[2 * i + 1] = watcher::kInvalid;
@@ -569,12 +569,12 @@ initialize_RAM_occurrences:
     static uint32_t trail_lim[MAX_GATES];
     static Assignment trail[MAX_GATES];
     int32_t clauses_end = 0;
-    uint32_t decision_level = 0;
+    Level decision_level = 0;
     int32_t trail_end = 0;
     int32_t q_head = 0;
 #ifdef USE_VSIDS
     static VSIDS strategy;
-#pragma HLS array_partition variable=strategy.activity cyclic factor=VSIDS_ACTIVITY_PARTITION_FACTOR
+#pragma HLS array_partition variable = strategy.activity cyclic factor = VSIDS_ACTIVITY_PARTITION_FACTOR
 #else
     static VMTF strategy;
 #pragma HLS bind_storage variable = strategy.links type = RAM_T2P
@@ -706,12 +706,12 @@ void printWatchLists(Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_G
     }
 }
 
-void printTrailSection(const int32_t start, const int32_t end, const Assignment trail[MAX_GATES], const uint32_t level_assigned[MAX_GATES], const NodeID antecedent[MAX_GATES]) {
+void printTrailSection(const int32_t start, const int32_t end, const Assignment trail[MAX_GATES], const Level level_assigned[MAX_GATES], const NodeID antecedent[MAX_GATES]) {
     cout << "Printing Trail from " << start << " to " << end;
     for (int t = end - 1; t >= start; t--) {
         if (t == end - 1 || level_assigned[trail[t + 1].gate_id] != level_assigned[trail[t].gate_id]) {
             cout << endl
-                 << "(d = " << level_assigned[trail[t].gate_id] << ") : ";
+                 << "(d = " << level_assigned[trail[t].gate_id].to_string(10) << ") : ";
         }
         cout << trail[t].to_string() << " (" << antecedent[trail[t].gate_id] << ")";
         cout << ",  ";
@@ -719,7 +719,7 @@ void printTrailSection(const int32_t start, const int32_t end, const Assignment 
     cout << endl;
 }
 
-void printTrail(const Assignment trail[MAX_GATES], const int32_t trail_end, const uint32_t level_assigned[MAX_GATES], const NodeID antecedent[MAX_GATES]) {
+void printTrail(const Assignment trail[MAX_GATES], const int32_t trail_end, const Level level_assigned[MAX_GATES], const NodeID antecedent[MAX_GATES]) {
     printTrailSection(0, trail_end, trail, level_assigned, antecedent);
 }
 

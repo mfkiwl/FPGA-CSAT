@@ -10,6 +10,7 @@
 
 typedef ap_uint<TRUTH_TABLE_BITS> TruthTable;
 typedef ap_uint<GATE_ID_BITS> GateID;
+typedef ap_uint<LEVEL_BITS> Level;
 typedef ap_uint<OFFSET_BITS> Offset;
 typedef ap_uint<OCCURRENCE_BITS> OccurrenceIndex;
 typedef ap_uint<IMPLY_BURST_INDEX_BITS> ImplyBurstIndex;
@@ -158,7 +159,9 @@ string to_string(const LiteralValuation lv) {
 }
 }  // namespace literal_valuation
 
-const uint32_t UNASSIGNED = -1;
+namespace level {
+    const Level kUnassigned = Level(-1);
+}
 
 struct Gate {
     Gate(){};
