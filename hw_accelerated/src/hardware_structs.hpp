@@ -310,6 +310,7 @@ class VSIDS {
 
     void bump(GateID gid) {
         float temp = activity[gid] + var_inc;
+#pragma HLS bind_op variable = temp op = fadd impl = fulldsp latency = 9
         activity[gid] = temp;
     }
 

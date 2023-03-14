@@ -305,10 +305,43 @@ propagate_loop:
 #endif
     }
 }
+
+void ResolveGate(const Gate& g, const PinValue assigns[MAX_GATES], Stamp stamps[MAX_GATES], const Stamp conflict_id, const Level level_assigned[MAX_GATES], const Level decision_level, VSIDS& strategy, Clause& learnt_clause, uint8_t& lc_end, uint8_t& swap_index, Level& backjump_level, bool& keep_clause, uint32_t& needs_resolution_count) {
+    #pragma HLS inline
+resolve_gate_loop:
+    for (Offset o = 0; o < PINS_PER_GATE; o++) {
+#pragma HLS DEPENDENCE variable = stamps inter false
 #ifdef USE_VSIDS
-bool ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_LEARNED_CLAUSES], int32_t clause_activity[MAX_LEARNED_CLAUSES], ClauseAllocator& clause_allocator, PinValue assigns[ASSIGN_CLONES][MAX_GATES], bool locked[MAX_GATES], const Assignment trail[MAX_GATES], int32_t& trail_end, const Level decision_level, const NodeID antecedent[MAX_GATES], Stamp stamps[MAX_GATES], Level level_assigned[MAX_GATES], VSIDS& strategy, uint32_t& backjump_level, Assignment& asserting_assignment, NodeID& learnt_node_id, uint32_t& resolve_forgot_count, uint32_t& resolve_gate_count, uint32_t& resolve_clause_count, uint64_t& pop_unstamped_count) {
+#pragma HLS DEPENDENCE variable = strategy.activity inter false  // edges are unique
+#endif
+        GateID edge = g.edges[o];
+        if (edge != gate_id::kNoConnect && pin_value::isAssigned(assigns[0][edge]) && stamps[edge] != conflict_id && level_assigned[edge] != 0) {
+            Literal l;
+            l = (edge, ~pin_value::to_polarity(assigns[0][edge]));
+            if (level_assigned[edge] < decision_level) {
+                if (level_assigned[edge] > backjump_level) {
+                    backjump_level = level_assigned[edge];
+                    swap_index = lc_end;
+                }
+                if (lc_end >= MAX_LITERALS_PER_CLAUSE) {
+                    keep_clause = false;
+                } else {
+                    learnt_clause.literals[lc_end] = l;
+                    lc_end++;
+                }
+            } else if (level_assigned[edge] == decision_level) {
+                needs_resolution_count++;
+            }
+            strategy.bump(edge);
+            stamps[edge] = conflict_id;
+        }
+    }
+}
+
+#ifdef USE_VSIDS
+bool ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_LEARNED_CLAUSES], int32_t clause_activity[MAX_LEARNED_CLAUSES], ClauseAllocator& clause_allocator, PinValue assigns[ASSIGN_CLONES][MAX_GATES], bool locked[MAX_GATES], const Assignment trail[MAX_GATES], int32_t& trail_end, const Level decision_level, const NodeID antecedent[MAX_GATES], Stamp stamps[MAX_GATES], Level level_assigned[MAX_GATES], VSIDS& strategy, Level& backjump_level, Assignment& asserting_assignment, NodeID& learnt_node_id, uint32_t& resolve_forgot_count, uint32_t& resolve_gate_count, uint32_t& resolve_clause_count, uint64_t& pop_unstamped_count) {
 #else
-bool ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_LEARNED_CLAUSES], int32_t clause_activity[MAX_LEARNED_CLAUSES], ClauseAllocator& clause_allocator, PinValue assigns[ASSIGN_CLONES][MAX_GATES], bool locked[MAX_GATES], const Assignment trail[MAX_GATES], int32_t& trail_end, const Level decision_level, const NodeID antecedent[MAX_GATES], Stamp stamps[MAX_GATES], Level level_assigned[MAX_GATES], VMTF& strategy, uint32_t& backjump_level, Assignment& asserting_assignment, NodeID& learnt_node_id, uint32_t& resolve_forgot_count, uint32_t& resolve_gate_count, uint32_t& resolve_clause_count, uint64_t& pop_unstamped_count) {
+bool ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watcher watcher_header[2 * MAX_GATES], Clause clauses[MAX_LEARNED_CLAUSES], int32_t clause_activity[MAX_LEARNED_CLAUSES], ClauseAllocator& clause_allocator, PinValue assigns[ASSIGN_CLONES][MAX_GATES], bool locked[MAX_GATES], const Assignment trail[MAX_GATES], int32_t& trail_end, const Level decision_level, const NodeID antecedent[MAX_GATES], Stamp stamps[MAX_GATES], Level level_assigned[MAX_GATES], VMTF& strategy, Level& backjump_level, Assignment& asserting_assignment, NodeID& learnt_node_id, uint32_t& resolve_forgot_count, uint32_t& resolve_gate_count, uint32_t& resolve_clause_count, uint64_t& pop_unstamped_count) {
 #endif
 #pragma HLS INLINE
     static Stamp conflict_id = 0;
@@ -321,7 +354,7 @@ bool ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watch
     uint32_t needs_resolution_count = 0;
     NodeID node_to_resolve = conflict;
     backjump_level = 0;
-    uint16_t swap_index = 0;
+    uint8_t swap_index = 0;
     bool ret = true;
     bool keep_clause = true;
 
@@ -339,34 +372,7 @@ ConflictAnalysis_loop:
             resolve_gate_count++;
             const GateID gid = node_to_resolve(GateID::width - 1, 0);
             const Gate g = gates[gid];
-        resolve_gate_loop:
-            for (Offset o = 0; o < PINS_PER_GATE; o++) {
-#pragma HLS DEPENDENCE variable = stamps inter false
-#ifdef USE_VSIDS
-#pragma HLS DEPENDENCE variable = strategy.activity inter false  // edges are unique
-#endif
-                GateID edge = g.edges[o];
-                if (edge != gate_id::kNoConnect && pin_value::isAssigned(assigns[0][edge]) && stamps[edge] != conflict_id && level_assigned[edge] != 0) {
-                    Literal l;
-                    l = (edge, ~pin_value::to_polarity(assigns[0][edge]));
-                    if (level_assigned[edge] < decision_level) {
-                        if (level_assigned[edge] > backjump_level) {
-                            backjump_level = level_assigned[edge];
-                            swap_index = lc_end;
-                        }
-                        if (lc_end >= MAX_LITERALS_PER_CLAUSE) {
-                            keep_clause = false;
-                        } else {
-                            learnt_clause.literals[lc_end] = l;
-                            lc_end++;
-                        }
-                    } else if (level_assigned[edge] == decision_level) {
-                        needs_resolution_count++;
-                    }
-                    strategy.bump(edge);
-                    stamps[edge] = conflict_id;
-                }
-            }
+            ResolveGate(g, assigns[0], stamps, conflict_id, level_assigned, decision_level, strategy, learnt_clause, lc_end, swap_index, backjump_level, keep_clause, needs_resolution_count);
         }
 #ifdef USE_CL
         else {
@@ -628,7 +634,7 @@ solve_loop:
                 is_sat = false;
                 break;
             }
-            uint32_t backjump_level;
+            Level backjump_level;
             Assignment asserting_assignment;
             NodeID learnt_node_id;
             if (!ConflictAnalysis(conflict, gates, watcher_header, clauses, clause_activity, clause_allocator, assigns, locked, trail, trail_end, decision_level, antecedent, stamps, level_assigned, strategy, backjump_level, asserting_assignment, learnt_node_id, resolve_forgot_count, resolve_gate_count, resolve_clause_count, pop_unstamped_count)) {
