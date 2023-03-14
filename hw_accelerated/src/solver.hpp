@@ -43,6 +43,7 @@ class Solver {
 
     unordered_map<string, bool> satisfying_assignment;
     std::chrono::duration<double> duration;
+    double kernel_time;
 
     void printSummary();
     void logSummary(string log_file_path);
@@ -206,9 +207,8 @@ void Solver::_solve() {
     OCL_CHECK(err, err = q.enqueueTask(solve_kernel, nullptr, &solve_event));
 
     solve_event.wait();
-    unsigned long long solve_event_time_ns = solve_event.getProfilingInfo<CL_PROFILING_COMMAND_END>() - solve_event.getProfilingInfo<CL_PROFILING_COMMAND_START>();
-    double solve_event_time = double(solve_event_time_ns) / 1000000000.0;
-    cout << "solve_event_time = " << std::fixed << std::setprecision(4) << solve_event_time << " s" << endl;
+    unsigned long long kernel_time_ns = solve_event.getProfilingInfo<CL_PROFILING_COMMAND_END>() - solve_event.getProfilingInfo<CL_PROFILING_COMMAND_START>();
+    kernel_time = double(kernel_time_ns) / 1000000000.0;
 
     // Copy Result from Device Global Memory to Host Local Memory
     OCL_CHECK(err, err = q.enqueueMigrateMemObjects({g_trail_buffer, is_sat_buffer, conflict_count_buffer, decision_count_buffer, propagation_count_buffer, burst_imply_count_buffer, gate_imply_count_buffer, clause_imply_count_buffer, resolve_gate_count_buffer, resolve_forgot_count_buffer, resolve_clause_count_buffer, pop_unstamped_count_buffer, pick_branching_count_buffer, cancel_until_count_buffer, reduce_clauses_count_buffer, gate_implication_count_buffer, clause_implication_count_buffer}, CL_MIGRATE_MEM_OBJECT_HOST));
@@ -245,6 +245,7 @@ void Solver::_solve() {
 void Solver::printSummary() {
     cout << eqn_file_path << endl;
     cout << "SAT? = " << is_sat << endl;
+    cout << std::fixed << std::setprecision(4) << kernel_time << "s" << endl;
     cout << std::fixed << std::setprecision(4) << duration.count() << "s" << endl;
     cout << graph.nodes.size() << " nodes." << endl;
     cout << graph.total_occurrences << " total occurrences." << endl;
@@ -265,7 +266,7 @@ void Solver::logSummary(string log_file_path) {
     // Write Header for new log files
     if (!fileExists(log_file_path)) {
         ofstream log(log_file_path);
-        log << "path,SAT?,duration(s),nodes,total occurrences,primary inputs read,primary outputs read";
+        log << "path,SAT?,kernel time(s),duration(s),nodes,total occurrences,primary inputs read,primary outputs read";
         for (int i = 0; i < metric_names.size(); i++) {
             log << "," << metric_names[i];
         }
@@ -277,6 +278,7 @@ void Solver::logSummary(string log_file_path) {
     ofstream log(log_file_path, ios_base::app);
     log << eqn_file_path << ",";
     log << is_sat << ",";
+    log << std::fixed << std::setprecision(4) << kernel_time << ",";
     log << std::fixed << std::setprecision(4) << duration.count() << ",";
     log << graph.nodes.size() << ",";
     log << graph.total_occurrences << ",";
