@@ -11,6 +11,7 @@
 typedef ap_uint<TRUTH_TABLE_BITS> TruthTable;
 typedef ap_uint<GATE_ID_BITS> GateID;
 typedef ap_uint<LEVEL_BITS> Level;
+typedef ap_uint<STAMP_BITS> Stamp;
 typedef ap_uint<OFFSET_BITS> Offset;
 typedef ap_uint<OCCURRENCE_BITS> OccurrenceIndex;
 typedef ap_uint<IMPLY_BURST_INDEX_BITS> ImplyBurstIndex;
@@ -160,7 +161,11 @@ string to_string(const LiteralValuation lv) {
 }  // namespace literal_valuation
 
 namespace level {
-    const Level kUnassigned = Level(-1);
+const Level kUnassigned = Level(-1);
+}
+
+namespace stamp {
+const Stamp kUnstamped = Stamp(-1);
 }
 
 struct Gate {
@@ -324,8 +329,8 @@ class VSIDS {
 
     bool pickBranching(const PinValue assigns[MAX_GATES], Assignment& branching_assignment, uint64_t& pick_branching_count) {
 #pragma HLS INLINE
-//#pragma HLS array_partition variable = assigns cyclic factor = VSIDS_ACTIVITY_PARTITION_FACTOR
-#pragma HLS bind_storage variable=assigns type=RAM_1WnR
+// #pragma HLS array_partition variable = assigns cyclic factor = VSIDS_ACTIVITY_PARTITION_FACTOR
+#pragma HLS bind_storage variable = assigns type = RAM_1WnR
         bool found = false;
         float candidate_score = -1;
 
@@ -335,7 +340,7 @@ class VSIDS {
             PinValue pin_value;
             CompareEntry() : activity_score(-1), gate_id(gate_id::kNoConnect), pin_value(pin_value::kDisconnect) {}
             CompareEntry(float activity_score, GateID gate_id, PinValue pin_value) : activity_score(activity_score), gate_id(gate_id), pin_value(pin_value) {}
-            bool operator >=(const CompareEntry& other) const {
+            bool operator>=(const CompareEntry& other) const {
                 return activity_score >= other.activity_score;
             }
             string to_string() const {
@@ -349,7 +354,7 @@ class VSIDS {
     pickBranching_VSIDS_loop:
         for (int base_index = 0; base_index < m_num_gates; base_index += VSIDS_ACTIVITY_PARTITION_FACTOR) {
 #pragma HLS loop_tripcount max = (MAX_GATES / VSIDS_ACTIVITY_PARTITION_FACTOR)
-        pick_branching_count++;
+            pick_branching_count++;
         load_initial_stage:
             for (int b = 0; b < VSIDS_ACTIVITY_PARTITION_FACTOR; b++) {
 #pragma HLS unroll
