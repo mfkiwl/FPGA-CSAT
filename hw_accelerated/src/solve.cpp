@@ -407,17 +407,21 @@ ConflictAnalysis_loop:
         }
 #endif
         t--;  // t was at trail_end or the already resolved assignment
-        GateID trail_gid = trail[t].gate_id;
-    trail_stamp_search:
-        while (stamps[trail_gid] != conflict_id) {
-            // assert(antecedent[trail[t].gate_id] != node_id::kDecision);  // There is no way we should pop through a decision level during Resolution
-            pop_unstamped_count++;
-            Cancel(trail_gid, assigns, level_assigned, antecedent, locked);
+        GateID trail_gid[2];
+#pragma HLS array_partition variable = trail_gid complete
+        trail_gid[0] = trail[t].gate_id;
+        trail_gid[1] = trail[t - 1].gate_id;
+        uint32_t stamp = stamps[trail_gid[0]];
+        trail_stamp_search:
+        while (stamp != conflict_id) {
             t--;
-            trail_gid = trail[t].gate_id;
+            stamp = stamps[trail_gid[1]];
+            Cancel(trail_gid[0], assigns, level_assigned, antecedent, locked);
+            trail_gid[0] = trail_gid[1];
+            trail_gid[1] = trail[t - 1].gate_id;
         }
-        node_to_resolve = antecedent[trail_gid];
-        Cancel(trail_gid, assigns, level_assigned, antecedent, locked);
+        node_to_resolve = antecedent[trail_gid[0]];
+        Cancel(trail_gid[0], assigns, level_assigned, antecedent, locked);
         needs_resolution_count--;
     } while (needs_resolution_count > 0);
     trail_end = t;
