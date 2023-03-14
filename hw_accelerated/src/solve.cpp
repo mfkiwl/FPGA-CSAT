@@ -315,9 +315,9 @@ resolve_gate_loop:
 #pragma HLS DEPENDENCE variable = strategy.activity inter false  // edges are unique
 #endif
         GateID edge = g.edges[o];
-        if (edge != gate_id::kNoConnect && pin_value::isAssigned(assigns[0][edge]) && stamps[edge] != conflict_id && level_assigned[edge] != 0) {
+        if (edge != gate_id::kNoConnect && pin_value::isAssigned(assigns[edge]) && stamps[edge] != conflict_id && level_assigned[edge] != 0) {
             Literal l;
-            l = (edge, ~pin_value::to_polarity(assigns[0][edge]));
+            l = (edge, ~pin_value::to_polarity(assigns[edge]));
             if (level_assigned[edge] < decision_level) {
                 if (level_assigned[edge] > backjump_level) {
                     backjump_level = level_assigned[edge];
