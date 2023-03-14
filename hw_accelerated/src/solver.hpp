@@ -232,7 +232,10 @@ void Solver::_solve() {
             } else {
                 assert(0 && "non ONE/ZERO assignment in trail");
             }
-            assert(satisfying_assignment.find(graph.gate_map[gid]) == satisfying_assignment.end() && "duplicate PI assignment in trail");
+            if(satisfying_assignment.find(graph.gate_map[gid]) != satisfying_assignment.end()) {
+                cout << "PI extraction failed: duplicate assignment - " << gid.to_string(10) << " <-> " << graph.gate_map[gid] << endl;
+                assert(false);
+            }
             satisfying_assignment.insert({graph.gate_map[gid], val});
         }
         t++;
