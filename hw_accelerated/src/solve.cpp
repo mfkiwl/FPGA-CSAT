@@ -307,7 +307,7 @@ propagate_loop:
 }
 
 void ResolveGate(const Gate& g, const PinValue assigns[MAX_GATES], Stamp stamps[MAX_GATES], const Stamp conflict_id, const Level level_assigned[MAX_GATES], const Level decision_level, VSIDS& strategy, Clause& learnt_clause, uint8_t& lc_end, uint8_t& swap_index, Level& backjump_level, bool& keep_clause, uint32_t& needs_resolution_count) {
-    #pragma HLS inline
+#pragma HLS inline
 resolve_gate_loop:
     for (Offset o = 0; o < PINS_PER_GATE; o++) {
 #pragma HLS DEPENDENCE variable = stamps inter false
@@ -315,25 +315,31 @@ resolve_gate_loop:
 #pragma HLS DEPENDENCE variable = strategy.activity inter false  // edges are unique
 #endif
         GateID edge = g.edges[o];
-        if (edge != gate_id::kNoConnect && pin_value::isAssigned(assigns[edge]) && stamps[edge] != conflict_id && level_assigned[edge] != 0) {
-            Literal l;
-            l = (edge, ~pin_value::to_polarity(assigns[edge]));
-            if (level_assigned[edge] < decision_level) {
-                if (level_assigned[edge] > backjump_level) {
-                    backjump_level = level_assigned[edge];
-                    swap_index = lc_end;
+        if (edge != gate_id::kNoConnect) {
+            float bumped_score = strategy.activity[edge] + strategy.var_inc;
+            PinValue edge_pv = assigns[edge];
+            Stamp edge_stamp = stamps[edge];
+            Level edge_level = level_assigned[edge];
+            if (pin_value::isAssigned(edge_pv) && edge_stamp != conflict_id && edge_level != 0) {
+                strategy.activity[edge] = bumped_score;
+                stamps[edge] = conflict_id;
+                if (edge_level == decision_level) {
+                    needs_resolution_count++;
+                } else if (edge_level < decision_level) {
+                    if (edge_level > backjump_level) {
+                        backjump_level = edge_level;
+                        swap_index = lc_end;
+                    }
+#ifdef USE_CL
+                    if (lc_end >= MAX_LITERALS_PER_CLAUSE) {
+                        keep_clause = false;
+                    } else {
+                        learnt_clause.literals[lc_end] = (edge, ~pin_value::to_polarity(edge_pv));;
+                        lc_end++;
+                    }
+#endif
                 }
-                if (lc_end >= MAX_LITERALS_PER_CLAUSE) {
-                    keep_clause = false;
-                } else {
-                    learnt_clause.literals[lc_end] = l;
-                    lc_end++;
-                }
-            } else if (level_assigned[edge] == decision_level) {
-                needs_resolution_count++;
             }
-            strategy.bump(edge);
-            stamps[edge] = conflict_id;
         }
     }
 }
@@ -418,7 +424,7 @@ ConflictAnalysis_loop:
         trail_gid[0] = trail[t].gate_id;
         trail_gid[1] = trail[t - 1].gate_id;
         uint32_t stamp = stamps[trail_gid[0]];
-        trail_stamp_search:
+    trail_stamp_search:
         while (stamp != conflict_id) {
             t--;
             stamp = stamps[trail_gid[1]];
