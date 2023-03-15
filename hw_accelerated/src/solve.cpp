@@ -16,7 +16,7 @@ void printClauses(const Clause clauses[MAX_LEARNED_CLAUSES], const PinValue assi
 
 void Enqueue(const Assignment& a, const NodeID& reason, PinValue assigns[ASSIGN_CLONES][MAX_GATES], NodeID antecedent[MAX_GATES], Level level_assigned[MAX_GATES], const Level decision_level, bool locked[MAX_LEARNED_CLAUSES], Assignment trail[MAX_GATES], int32_t& trail_end) {
 #pragma HLS INLINE
-    // cout << "Enqueue " << a.gate_id.to_string(10) << " = " << a.value.to_string(10) << " @ " << decision_level << endl;
+    // cout << "Enqueue " << a.to_string()) << " @ " << decision_level.to_string(10) << endl;
     // assert(a.gate_id != gate_id::kNoConnect);
     // assert(trail_end <= MAX_GATES);
 enqueue_clone_assigns:
@@ -334,7 +334,8 @@ resolve_gate_loop:
                     if (lc_end >= MAX_LITERALS_PER_CLAUSE) {
                         keep_clause = false;
                     } else {
-                        learnt_clause.literals[lc_end] = (edge, ~pin_value::to_polarity(edge_pv));;
+                        learnt_clause.literals[lc_end] = (edge, ~pin_value::to_polarity(edge_pv));
+                        ;
                         lc_end++;
                     }
 #endif
@@ -362,7 +363,11 @@ bool ConflictAnalysis(const NodeID& conflict, const Gate gates[MAX_GATES], Watch
     backjump_level = 0;
     uint8_t swap_index = 0;
     bool ret = true;
+#ifdef USE_CL
     bool keep_clause = true;
+#else
+    bool keep_clause = false;
+#endif
 
 ConflictAnalysis_loop:
     do {
@@ -628,7 +633,7 @@ solve_loop:
         Propagate(gates, truth_tables, occurrence_header, occurrence_gids, watcher_header, clauses, locked, assigns, trail, trail_end, q_head, level_assigned, antecedent, decision_level, conflict, propagation_count, burst_imply_count, gate_imply_count, clause_imply_count, gate_implication_count, clause_implication_count);
         if (conflict != node_id::kDecision) {
             conflict_count++;
-            // cout << "Conflict occurred @ " << decision_level << endl;
+            // cout << "Conflict (" << conflict_count << ") occurred @ " << decision_level.to_string(10) << endl;
 #ifdef USE_CL
             if (clause_allocator.isFull()) {
                 reduce_clauses_count++;
@@ -661,9 +666,7 @@ solve_loop:
             CancelUntil(backtrack_step, trail, trail_end, assigns, level_assigned, antecedent, locked, cancel_until_count);
             q_head = trail_end;
             decision_level = backjump_level;
-            // cout << "Backtrack to " << backjump_level << ". asserting assignment: ";
-            // asserting_assignment.print();
-            // cout << " @ " << decision_level << endl;
+            // cout << "Backtrack to " << backjump_level.to_string(10) << ". asserting assignment: " << asserting_assignment.to_string() << " @ " << decision_level.to_string(10) << endl;
             Enqueue(asserting_assignment, learnt_node_id, assigns, antecedent, level_assigned, decision_level, locked, trail, trail_end);
         } else {
             trail_lim[decision_level] = trail_end;
@@ -675,6 +678,7 @@ solve_loop:
             }
             decision_count++;
             decision_level++;
+            // cout << "Decision (" << decision_count << "): " << branching_assignment.to_string() << " @ " << decision_level.to_string(10) << endl;
             Enqueue(branching_assignment, node_id::kDecision, assigns, antecedent, level_assigned, decision_level, locked, trail, trail_end);
         }
     }
@@ -726,8 +730,7 @@ void printTrailSection(const int32_t start, const int32_t end, const Assignment 
     cout << "Printing Trail from " << start << " to " << end;
     for (int t = end - 1; t >= start; t--) {
         if (t == end - 1 || level_assigned[trail[t + 1].gate_id] != level_assigned[trail[t].gate_id]) {
-            cout << endl
-                 << "(d = " << level_assigned[trail[t].gate_id].to_string(10) << ") : ";
+            cout << "\n(d = " << level_assigned[trail[t].gate_id].to_string(10) << ") : ";
         }
         cout << trail[t].to_string() << " (" << antecedent[trail[t].gate_id] << ")";
         cout << ",  ";
