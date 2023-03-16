@@ -116,79 +116,90 @@ propagate_loop:
         // Loop through related gates
         const OccurrenceIndex low = occurrence_header[pa.gate_id];
         const OccurrenceIndex high = occurrence_header[pa.gate_id + 1];
+        // assert(low < high);
         ImplyResult imply_results[IMPLY_BURST_SIZE];
 #pragma HLS array_partition variable = imply_results complete  // not required - small array is automatically partitioned
+        OccurrenceIndex base_index = low;
     occurrence_loop:
-        for (OccurrenceIndex base_index = low; base_index < high; base_index += IMPLY_BURST_SIZE) {
+        do {
             ImplyBurstIndex burst_size = (base_index + IMPLY_BURST_SIZE > high) ? ImplyBurstIndex(high - base_index) : ImplyBurstIndex(IMPLY_BURST_SIZE);
+            // assert(burst_size > 0);
             burst_imply_count++;
             gate_imply_count += burst_size;
-        burst_imply:
-            for (ImplyBurstIndex b = 0; b < burst_size; b++) {
+            {
+                ImplyBurstIndex b = 0;
+            burst_imply:
+                do {
 #pragma HLS loop_tripcount min = 1 max = IMPLY_BURST_SIZE
-                const GateID gid = occurrence_gids[base_index + b];
-                const Gate g = gates[gid];
+                    const GateID gid = occurrence_gids[base_index + b];
+                    const Gate g = gates[gid];
 #pragma HLS array_partition variable = g.edges complete
 
-                imply_results[b].gate_id = gid;
-                imply_results[b].assignment = {gate_id::kNoConnect, pin_value::kDisconnect};  // reset
+                    imply_results[b].gate_id = gid;
+                    imply_results[b].assignment = {gate_id::kNoConnect, pin_value::kDisconnect};  // reset
 
-                // Collect assigns for g
-                Pins initial_pins;
-                CollectGateAssigns(assigns, g.edges, initial_pins);
+                    // Collect assigns for g
+                    Pins initial_pins;
+                    CollectGateAssigns(assigns, g.edges, initial_pins);
 
-                // Imply
-                Pins implied_pins;
-                bool imply_conflict;
-                imply(initial_pins, truth_tables[gid], implied_pins, imply_conflict);
+                    // Imply
+                    Pins implied_pins;
+                    bool imply_conflict;
+                    imply(initial_pins, truth_tables[gid], implied_pins, imply_conflict);
 
-                imply_results[b].imply_conflict = imply_conflict;
+                    imply_results[b].imply_conflict = imply_conflict;
 
-            store_first_implication:
-                for (Offset o = 0; o < PINS_PER_GATE; o++) {
-                    if (pin_value::isAssigned(implied_pins(2 * o + 1, 2 * o)) && (initial_pins(2 * o + 1, 2 * o) != implied_pins(2 * o + 1, 2 * o))) {
-                        imply_results[b].assignment = {g.edges[o], implied_pins(2 * o + 1, 2 * o)};
-                        gate_implication_count++;
-                        break;
-                    }
-                }
-            }
-
-        synchronization_barrier:
-            for (ImplyBurstIndex b = 0; b < burst_size; b++) {
-#pragma HLS loop_tripcount min = 1 max = IMPLY_BURST_SIZE
-                if (imply_results[b].imply_conflict) {
-                    conflict = (node_type::kGate, ap_uint<NODE_ID_BITS - 1>(imply_results[b].gate_id));
-                    conflict_occurred = true;
-                    goto end_of_barrier;
-                }
-                if (imply_results[b].assignment.gate_id != gate_id::kNoConnect) {
-                    // Check for conflicts or duplicates with previous occurrences
-                synchronization_check:
-                    for (int previous_b = 0; previous_b < IMPLY_BURST_SIZE - 1; previous_b++) {
-#pragma HLS unroll complete  // By having constant loop bounds + variable internal check, we can completely unroll this
-                        if (previous_b >= b) {
+                store_first_implication:
+                    for (Offset o = 0; o < PINS_PER_GATE; o++) {
+                        if (pin_value::isAssigned(implied_pins(2 * o + 1, 2 * o)) && (initial_pins(2 * o + 1, 2 * o) != implied_pins(2 * o + 1, 2 * o))) {
+                            imply_results[b].assignment = {g.edges[o], implied_pins(2 * o + 1, 2 * o)};
+                            gate_implication_count++;
                             break;
                         }
-                        if (imply_results[b].assignment.gate_id == imply_results[previous_b].assignment.gate_id) {
-                            if (imply_results[b].assignment.value != imply_results[previous_b].assignment.value) {
-                                conflict = (node_type::kGate, ap_uint<NODE_ID_BITS - 1>(imply_results[b].gate_id));
-                                conflict_occurred = true;
-                            }
-                            goto end_of_barrier;
-                        }
                     }
-                    const Assignment enqueue_assignment = imply_results[b].assignment;
-                    const NodeID enqueue_reason = (node_type::kGate, imply_results[b].gate_id);
-                    Enqueue(enqueue_assignment, enqueue_reason, assigns, antecedent, level_assigned, decision_level, locked, trail, trail_end);
-                }
+                    b++;
+                } while (b < burst_size);
+            }
+            {
+                ImplyBurstIndex b = 0;
+            synchronization_barrier:
+                do {
+#pragma HLS loop_tripcount min = 1 max = IMPLY_BURST_SIZE
+                    if (imply_results[b].imply_conflict) {
+                        conflict = (node_type::kGate, ap_uint<NODE_ID_BITS - 1>(imply_results[b].gate_id));
+                        conflict_occurred = true;
+                        goto end_of_barrier;
+                    }
+                    if (imply_results[b].assignment.gate_id != gate_id::kNoConnect) {
+                        // Check for conflicts or duplicates with previous occurrences
+                    synchronization_check:
+                        for (int previous_b = 0; previous_b < IMPLY_BURST_SIZE - 1; previous_b++) {
+#pragma HLS unroll complete  // By having constant loop bounds + variable internal check, we can completely unroll this
+                            if (previous_b >= b) {
+                                break;
+                            }
+                            if (imply_results[b].assignment.gate_id == imply_results[previous_b].assignment.gate_id) {
+                                if (imply_results[b].assignment.value != imply_results[previous_b].assignment.value) {
+                                    conflict = (node_type::kGate, ap_uint<NODE_ID_BITS - 1>(imply_results[b].gate_id));
+                                    conflict_occurred = true;
+                                }
+                                goto end_of_barrier;
+                            }
+                        }
+                        const Assignment enqueue_assignment = imply_results[b].assignment;
+                        const NodeID enqueue_reason = (node_type::kGate, imply_results[b].gate_id);
+                        Enqueue(enqueue_assignment, enqueue_reason, assigns, antecedent, level_assigned, decision_level, locked, trail, trail_end);
+                    }
+                    b++;
+                } while (b < burst_size);
             }
 
         end_of_barrier:
             if (conflict_occurred) {
                 break;
             }
-        }
+            base_index += IMPLY_BURST_SIZE;
+        } while (base_index < high);
 
         if (conflict_occurred) {
             break;

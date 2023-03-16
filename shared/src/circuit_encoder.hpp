@@ -112,6 +112,12 @@ bool validForHardware(const Graph& graph) {
         cout << "MAX_GATES constraint not satisfied: " << graph.nodes.size() << " > " << MAX_GATES << endl;
         return false;
     }
+    for (uint32_t i = 0; i < graph.occurrence_tables.size(); i++) {
+        if(graph.occurrence_tables[i].empty()) {
+            cout << "occurrence_tables assumption not satisfied: Gate " << i << "does not occur in the circuit" << endl;
+            return false;
+        }
+    }
     return true;
 }
 
