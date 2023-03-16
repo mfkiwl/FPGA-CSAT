@@ -15,17 +15,16 @@ static constexpr unsigned int ceillog2(unsigned int x) {
 constexpr unsigned int PINS_PER_GATE = LUT_SIZE + 1;
 constexpr unsigned int MAX_OCCURRENCES = MAX_GATES * PINS_PER_GATE;
 constexpr unsigned int UNIQUE_STAMPS = 65535;
-constexpr unsigned int RESERVED_GATE_IDS = 1;  // kNoConnect
+constexpr unsigned int RESERVED_GATE_IDS = 1;   // kNoConnect
 constexpr unsigned int RESERVED_LEVEL_IDS = 1;  // kUnassigned
 constexpr unsigned int RESERVED_STAMP_IDS = 1;  // kUnstamped
-constexpr unsigned int RESERVED_NODE_IDS = 2;  // kDecision and kForgot
+constexpr unsigned int RESERVED_NODE_IDS = 2;   // kDecision and kForgot
 
 // #define USE_CL
 constexpr unsigned int MAX_LEARNED_CLAUSES = MAX_GATES;
 constexpr unsigned int MAX_LITERALS_PER_CLAUSE = 24;
 constexpr unsigned int CLAUSE_ACTIVITY_LIMIT = 4;
 
-constexpr unsigned int ASSIGN_CLONES = (MAX_LITERALS_PER_CLAUSE > LUT_SIZE + 1) ? MAX_LITERALS_PER_CLAUSE : LUT_SIZE + 1;  // allows single read cycle for gathering gate + clause state
 constexpr unsigned int IMPLY_BURST_SIZE = 4;  // allows muliply occurrences to be implied in bursts
 
 constexpr unsigned int TRUTH_TABLE_BITS = 1 << LUT_SIZE;

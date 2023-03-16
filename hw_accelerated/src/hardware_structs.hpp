@@ -330,8 +330,6 @@ class VSIDS {
 
     bool pickBranching(const PinValue assigns[MAX_GATES], Assignment& branching_assignment, uint64_t& pick_branching_count) {
 #pragma HLS INLINE
-// #pragma HLS array_partition variable = assigns cyclic factor = VSIDS_ACTIVITY_PARTITION_FACTOR
-#pragma HLS bind_storage variable = assigns type = RAM_1WnR
         bool found = false;
         float candidate_score = -1;
 
