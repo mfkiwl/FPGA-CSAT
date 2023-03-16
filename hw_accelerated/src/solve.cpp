@@ -383,6 +383,7 @@ ConflictAnalysis_loop:
             resolve_gate_count++;
             const GateID gid = node_to_resolve(GateID::width - 1, 0);
             const Gate g = gates[gid];
+#pragma HLS array_partition variable = g.edges complete
             ResolveGate(g, assigns[0], stamps, conflict_id, level_assigned, decision_level, strategy, learnt_clause, lc_end, swap_index, backjump_level, keep_clause, needs_resolution_count);
         }
 #ifdef USE_CL
