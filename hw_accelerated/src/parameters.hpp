@@ -25,7 +25,7 @@ constexpr unsigned int MAX_LEARNED_CLAUSES = MAX_GATES;
 constexpr unsigned int MAX_LITERALS_PER_CLAUSE = 24;
 constexpr unsigned int CLAUSE_ACTIVITY_LIMIT = 4;
 
-constexpr unsigned int IMPLY_BURST_SIZE = 4;  // allows muliply occurrences to be implied in bursts
+constexpr unsigned int IMPLY_BURST_SIZE = 8;  // allows muliply occurrences to be implied in bursts
 
 constexpr unsigned int TRUTH_TABLE_BITS = 1 << LUT_SIZE;
 constexpr unsigned int GATE_ID_BITS = ceillog2(MAX_GATES + RESERVED_GATE_IDS);
